@@ -1,0 +1,75 @@
+name: Flutter Project Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to use"
+        required: true
+        default: "modification/Automate"
+        type: string
+
+      project_name:
+        description: "Project name"
+        required: true
+        type: string
+
+      app_name:
+        description: "App name"
+        required: true
+        type: string
+
+      bundle_id:
+        description: "Bundle ID"
+        required: true
+        type: string
+
+      width:
+        description: "Width"
+        required: true
+        type: string
+
+      height:
+        description: "Height"
+        required: true
+        type: string
+
+      repo_url:
+        description: "Optional existing repo URL"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  generate:
+    runs-on: macos-latest
+
+    env:
+      # ✅ Fix Node 20 warning
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      # ✅ GitHub credentials from secrets
+      USER_NAME: ${{ secrets.USER_NAME }}
+      TOKEN: ${{ secrets.TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Make script executable
+        run: chmod +x ./scripts/bootstrap.sh
+
+      - name: Run script
+        run: |
+          ./scripts/bootstrap.sh \
+          "" \
+          "${{ inputs.project_name }}" \
+          "${{ inputs.app_name }}" \
+          "${{ inputs.bundle_id }}" \
+          "${{ inputs.width }}" \
+          "${{ inputs.height }}" \
+          "" \
+          "github" \
+          "${{ inputs.repo_url }}"

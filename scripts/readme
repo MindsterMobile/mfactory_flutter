@@ -1,0 +1,163 @@
+# Flutter Project Initializer (SSH Mode)
+
+A bash script that clones a Flutter base/template repository, renames it into a
+new project, applies the app name and bundle ID, sets the Flutter version via
+FVM, and pushes the result to a fresh target repository — all over SSH.
+
+## What it does
+
+1. Prompts for the base template repo, new project name, app name, bundle ID,
+   target repo, and Flutter version.
+2. Validates:
+   - Project name is `snake_case`.
+   - Bundle ID is reverse-DNS style (e.g. `com.company.app`).
+   - Both the base and target repos are SSH URLs (`git@github.com:...`).
+   - SSH access to GitHub is working.
+3. Clones the base repo (shallow, `--depth=1`) into `./temp_<project_name>`.
+4. Strips the cloned repo's git history.
+5. Updates `pubspec.yaml`'s `name:` field.
+6. Applies the app name and bundle ID to Android and iOS:
+   - Android: `android:label` in `AndroidManifest.xml`, `applicationId` in
+     `build.gradle(.kts)`.
+   - iOS: `CFBundleDisplayName` / `CFBundleName` in `Info.plist` (via
+     `plutil`), `PRODUCT_BUNDLE_IDENTIFIER` in `project.pbxproj`.
+7. Sets the Flutter version with [FVM](https://fvm.app) if installed.
+8. Re-initializes git, commits, and pushes to the target repo over SSH.
+
+## Requirements
+
+- `git` with an SSH key added to your GitHub account
+  ([docs](https://docs.github.com/en/authentication/connecting-to-github-with-ssh)).
+- `bash`, `sed`.
+- `plutil` (macOS only) for iOS display name updates — the script skips this
+  step with a warning on Linux/CI runners where `plutil` isn't available.
+- [FVM](https://fvm.app) (optional) if you want automatic Flutter version
+  pinning.
+
+## Usage
+
+```bash
+chmod +x init_flutter_project.sh
+./init_flutter_project.sh
+```
+
+You'll be prompted for:
+
+| Prompt              | Example                                  |
+|----------------------|-------------------------------------------|
+| Base Template Repo   | `git@github.com:yourorg/flutter_base.git` |
+| Project Name         | `mfactory_flutter`                        |
+| App Name             | `MFactory`                                |
+| Bundle ID            | `com.mfactory.app`                        |
+| Target Repo          | `git@github.com:yourorg/mfactory_flutter.git` |
+| Flutter Version      | `3.24.0`                                  |
+
+The target repo should already exist (even if empty) before running the
+script.
+
+## Why SSH-only?
+
+This script intentionally refuses HTTPS remotes. Pushing to GitHub over HTTPS
+requires a token embedded in the remote URL (e.g.
+`https://x-access-token:<TOKEN>@github.com/owner/repo.git`) or a credential
+helper — plain username/password auth was removed by GitHub. Using SSH avoids
+this class of failure entirely, as long as your key is registered with
+GitHub.
+
+## CI usage: getting a token with the right permissions
+
+This script itself only uses SSH, but if you're running it (or a variant of
+it) inside CI — e.g. a `bootstrap.sh` step in GitHub Actions that also
+*creates* the target repo before pushing — you'll need a **Personal Access
+Token (PAT)**, since the workflow's default `GITHUB_TOKEN` is scoped only to
+the repo the workflow runs in and can't create or push to other repos.
+
+1. **Choose token type.** Use a classic PAT if the workflow needs to *create*
+   new repos — fine-grained PATs can't grant "create repository" access for
+   repos that don't exist yet.
+2. **Generate it.** GitHub → [Settings → Developer settings → Personal access
+   tokens → Tokens (classic)](https://github.com/settings/tokens) → Generate
+   new token. Give it a name and expiration.
+3. **Grant scopes.** Check `repo` (Full control of private repositories) —
+   covers create, push, and admin on repos you own. For org-owned repos, also
+   check `admin:org` → `read:org`, and authorize the token for SSO if the org
+   enforces it.
+4. **Save as a secret.** Repo → Settings → Secrets and variables → Actions →
+   New repository secret. Name it e.g. `GH_PAT`. Never hardcode it in a
+   script or commit it.
+5. **Reference it in the workflow:**
+   ```yaml
+   env:
+     GH_PAT: ${{ secrets.GH_PAT }}
+   ```
+6. **Use it in the push URL:**
+   ```bash
+   git remote add origin "https://x-access-token:${GH_PAT}@github.com/OWNER/REPO.git"
+   ```
+7. **If using `gh repo create`**, the `gh` CLI expects `GH_TOKEN` (or
+   `GITHUB_TOKEN`) specifically — set `export GH_TOKEN="$GH_PAT"` before
+   calling it.
+
+**Note:** if the target repos live in an organization, the org may block
+personal access tokens entirely unless explicitly allowed (Org Settings →
+Third-party Access → Personal access tokens) — the token can look correctly
+scoped and still get silently rejected if this isn't enabled.
+
+## Rotating / updating the token
+
+Classic PATs expire (max 90 days) or can be revoked, and the workflow will
+start failing with the same `Invalid username or token` / `403` / `401`
+error once that happens. To fix it:
+
+1. **Generate a new token.** GitHub → Settings → Developer settings →
+   Personal access tokens → Tokens (classic) → **Generate new token
+   (classic)**. You can't reuse or un-expire an old token — this always
+   creates a fresh value. Set an expiration (max 90 days) and check the
+   `repo` scope.
+2. **Copy the token immediately.** GitHub shows it only once, right after
+   generation. If you navigate away before copying it, you'll have to
+   generate another one.
+3. **Open your repo's secrets.** Go to the repo where the workflow runs →
+   Settings → Secrets and variables → Actions.
+4. **Update the existing secret.** Find the secret your workflow reads
+   (`TOKEN` or `GH_TOKEN` — check the `env:` block in your `.yml` file to see
+   which name is actually live). Click it → **Update secret** → paste the
+   new value → save. You don't need to delete and recreate it.
+5. **Confirm org access if applicable.** If the target repo is under an
+   organization, check Organization Settings → Third-party Access →
+   Personal access tokens to make sure the new token is approved there —
+   otherwise it can be silently rejected even though it looks valid.
+6. **Re-run the workflow.** No script or workflow file changes are needed —
+   the next run picks up the new secret value automatically.
+
+> ⚠️ **Name mismatch check:** if your repo has more than one version of the
+> bootstrap script in circulation, confirm the secret name you're updating
+> matches what the *currently deployed* script reads. One version expects
+> `TOKEN` + `USER_NAME`, another expects `GH_TOKEN` — updating the wrong one
+> leaves the script reading an empty value and failing the same way.
+
+## Troubleshooting
+
+**`remote: Invalid username or token. Password authentication is not
+supported for Git operations.`**
+This means a push attempted plain HTTPS auth. If you're running this in CI
+(e.g. GitHub Actions) rather than locally:
+- Use an SSH deploy key added as a secret, and set up the SSH agent in the
+  workflow before running this script, **or**
+- If you must use HTTPS, embed a token explicitly:
+  `git remote set-url origin https://x-access-token:${TOKEN}@github.com/owner/repo.git`
+  instead of relying on the plain URL.
+
+**`SSH not fully verified` warning**
+Run `ssh -T git@github.com` manually and confirm you see "You've successfully
+authenticated." Add your public key to GitHub if not
+([Settings → SSH and GPG keys](https://github.com/settings/keys)).
+
+**`Cannot access repo` on the base or target repo**
+Confirm the repo exists, you have access, and the SSH URL is correct
+(`git@github.com:owner/repo.git`, not the HTTPS form).
+
+**iOS bundle ID / name not applied**
+The `plutil` step only runs on macOS. On Linux CI runners, either post-process
+`Info.plist` with a plist library, or accept the default and rename manually
+in Xcode afterward.
