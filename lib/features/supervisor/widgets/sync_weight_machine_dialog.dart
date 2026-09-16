@@ -7,12 +7,14 @@ import '../../../utils/styles.dart';
 class SyncWeightMachineBottomSheet extends StatefulWidget {
   final String jobCardId;
   final double initialWeight;
+  final String buttonTitle;
   final Function(double) onSubmit;
 
   const SyncWeightMachineBottomSheet({
     super.key,
     required this.jobCardId,
     this.initialWeight = 0.0,
+    this.buttonTitle = 'Submit and Complete',
     required this.onSubmit,
   });
 
@@ -21,6 +23,7 @@ class SyncWeightMachineBottomSheet extends StatefulWidget {
     required BuildContext context,
     required String jobCardId,
     double initialWeight = 0.0,
+    String buttonTitle = 'Submit and Complete',
     required Function(double) onSubmit,
   }) {
     return showModalBottomSheet<T>(
@@ -33,6 +36,7 @@ class SyncWeightMachineBottomSheet extends StatefulWidget {
       builder: (ctx) => SyncWeightMachineBottomSheet(
         jobCardId: jobCardId,
         initialWeight: initialWeight,
+        buttonTitle: buttonTitle,
         onSubmit: onSubmit,
       ),
     );
@@ -244,7 +248,7 @@ class _SyncWeightMachineBottomSheetState
                 ),
               ),
               child: Text(
-                'Submit and Complete',
+                widget.buttonTitle,
                 style: tsS15W700.copyWith(
                   color: Colors.white,
                 ),

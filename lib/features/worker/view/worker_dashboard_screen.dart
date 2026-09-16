@@ -13,6 +13,7 @@ import '../../auth/view/choose_location_screen.dart';
 import '../../supervisor/view/supervisor_dashboard_screen.dart';
 import '../view_model/worker_dashboard_view_model.dart';
 import 'job_details_screen.dart';
+import 'work_in_progress_screen.dart';
 import 'works_assigned_screen.dart';
 
 /// Factory Worker Dashboard Screen (Exact 1:1 match to Figma design)
@@ -130,6 +131,69 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
                   const SliverToBoxAdapter(
                     child: SizedBox(height: 32),
                   ),
+                ],
+              ),
+            );
+          },
+        ),
+        floatingActionButton: Consumer<WorkerDashboardViewModel>(
+          builder: (context, vm, _) {
+            final showFab = vm.inProgressCount > 0 ||
+                vm.selectedFilter == WorkerJobTabFilter.inProgress;
+            if (!showFab) return const SizedBox.shrink();
+
+            return FloatingActionButton(
+              backgroundColor: FactoryColors.buttonRed,
+              elevation: 4,
+              shape: const CircleBorder(),
+              tooltip: 'Work In Progress',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const WorkInProgressScreen(),
+                  ),
+                );
+              },
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    Icons.timelapse_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                  if (vm.inProgressCount > 0)
+                    Positioned(
+                      right: -6,
+                      top: -6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          '${vm.inProgressCount}',
+                          style: const TextStyle(
+                            color: FactoryColors.buttonRed,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             );
@@ -291,40 +355,47 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
       child: Column(
         children: [
           // Total Works Header Row
-          Row(
-            children: [
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: FactoryColors.primarySurface,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(
-                  Icons.assignment_outlined,
-                  size: 16,
-                  color: FactoryColors.primary,
-                ),
+          InkWell(
+            onTap: () => vm.setFilter(WorkerJobTabFilter.all),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: FactoryColors.primarySurface,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.assignment_outlined,
+                      size: 16,
+                      color: FactoryColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Total Works',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    vm.totalWorks,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              const Text(
-                'Total Works',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-              const Spacer(),
-              Text(
-                vm.totalWorks,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(height: 14),
 
@@ -333,52 +404,62 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
             children: [
               // Completed
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFF1F5F9)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Completed',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF64748B),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFCCFBF1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(
-                              Icons.check_rounded,
-                              size: 14,
-                              color: Color(0xFF0D9488),
-                            ),
-                          ),
-                        ],
+                child: InkWell(
+                  onTap: () => vm.setFilter(WorkerJobTabFilter.completed),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: vm.selectedFilter == WorkerJobTabFilter.completed
+                          ? const Color(0xFFE6FFFA)
+                          : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: vm.selectedFilter == WorkerJobTabFilter.completed
+                            ? const Color(0xFF0D9488)
+                            : const Color(0xFFF1F5F9),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${vm.completedCount}',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1E293B),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Completed',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFCCFBF1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Icon(
+                                Icons.check_rounded,
+                                size: 14,
+                                color: Color(0xFF0D9488),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          '${vm.completedCount}',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -386,52 +467,62 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
 
               // Pending
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFF1F5F9)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Pending',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF64748B),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          Container(
-                            width: 20,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEEF2FF),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(
-                              Icons.assignment_outlined,
-                              size: 14,
-                              color: Color(0xFF6366F1),
-                            ),
-                          ),
-                        ],
+                child: InkWell(
+                  onTap: () => vm.setFilter(WorkerJobTabFilter.pending),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: vm.selectedFilter == WorkerJobTabFilter.pending
+                          ? const Color(0xFFEEF2FF)
+                          : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: vm.selectedFilter == WorkerJobTabFilter.pending
+                            ? const Color(0xFF6366F1)
+                            : const Color(0xFFF1F5F9),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${vm.pendingCount}',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1E293B),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Pending',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEEF2FF),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Icon(
+                                Icons.assignment_outlined,
+                                size: 14,
+                                color: Color(0xFF6366F1),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          '${vm.pendingCount}',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -784,7 +875,6 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
 
   /// Individual Job Card exactly matching Figma Card
   Widget _buildFigmaJobCard(BuildContext context, JobCardModel job, int index) {
-    final isPending = job.status == JobStatus.pending;
     final hasTintedHeader = index == 1;
 
     return Container(
@@ -848,24 +938,18 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                     decoration: BoxDecoration(
-                      color: isPending
-                          ? FactoryColors.statusPendingBg
-                          : FactoryColors.statusInProgressBg,
+                      color: job.status.backgroundColor,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: isPending
-                            ? FactoryColors.statusPendingBorder
-                            : FactoryColors.statusInProgressBorder,
+                        color: job.status.borderColor,
                       ),
                     ),
                     child: Text(
-                      isPending ? 'Pending' : 'Work in Progress',
+                      job.status.label,
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: isPending
-                            ? FactoryColors.statusPendingText
-                            : FactoryColors.statusInProgressText,
+                        color: job.status.textColor,
                       ),
                     ),
                   ),

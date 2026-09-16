@@ -13,6 +13,7 @@ import '../../worker/view/worker_dashboard_screen.dart';
 import '../view_model/supervisor_dashboard_view_model.dart';
 import '../widgets/sync_weight_machine_dialog.dart';
 import 'reports_list_screen.dart';
+import 'select_employees_screen.dart';
 import 'supervisor_job_card_details_screen.dart';
 import 'supervisor_job_details_screen.dart';
 
@@ -807,7 +808,7 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
                     backgroundColor: Colors.white,
                   ),
                   child: Text(
-                    'Enter Weight and Acknowledge',
+                    'Assign to Worker',
                     style: tsS14W700.copyWith(
                       color: FactoryColors.primary,
                     ),
@@ -836,12 +837,14 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
       builder: (sheetCtx) => SyncWeightMachineBottomSheet(
         jobCardId: job.id,
         initialWeight: job.grossWeightGm,
+        buttonTitle: 'Proceed to Assign',
         onSubmit: (weight) {
-          vm.submitWeightAndComplete(job.id, weight);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Job ${job.id} marked as completed ($weight gm)'),
-              backgroundColor: FactoryColors.statusCompletedText,
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => SelectEmployeesScreen(
+                jobCardId: job.id,
+              ),
             ),
           );
         },

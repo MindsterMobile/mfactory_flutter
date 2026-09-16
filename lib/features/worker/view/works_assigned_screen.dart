@@ -5,6 +5,7 @@ import '../../../models/job_status.dart';
 import '../../../utils/colors.dart';
 import '../view_model/worker_dashboard_view_model.dart';
 import 'job_details_screen.dart';
+import 'work_in_progress_screen.dart';
 
 /// Works Assigned to Me Full Screen (Exact 1:1 match to Figma Screen 4)
 class WorksAssignedScreen extends StatelessWidget {
@@ -144,7 +145,6 @@ class WorksAssignedScreen extends StatelessWidget {
                   itemCount: vm.filteredJobs.length,
                   itemBuilder: (context, index) {
                     final job = vm.filteredJobs[index];
-                    final isPending = job.status == JobStatus.pending;
                     final hasTintedHeader = index == 1;
 
                     return Container(
@@ -219,24 +219,18 @@ class WorksAssignedScreen extends StatelessWidget {
                                       vertical: 3,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: isPending
-                                          ? FactoryColors.statusPendingBg
-                                          : FactoryColors.statusInProgressBg,
+                                      color: job.status.backgroundColor,
                                       borderRadius: BorderRadius.circular(20),
                                       border: Border.all(
-                                        color: isPending
-                                            ? FactoryColors.statusPendingBorder
-                                            : FactoryColors.statusInProgressBorder,
+                                        color: job.status.borderColor,
                                       ),
                                     ),
                                     child: Text(
-                                      isPending ? 'Pending' : 'Work in Progress',
+                                      job.status.label,
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
-                                        color: isPending
-                                            ? FactoryColors.statusPendingText
-                                            : FactoryColors.statusInProgressText,
+                                        color: job.status.textColor,
                                       ),
                                     ),
                                   ),
@@ -322,6 +316,69 @@ class WorksAssignedScreen extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          floatingActionButton: Builder(
+            builder: (context) {
+              final showFab = vm.inProgressCount > 0 ||
+                  vm.selectedFilter == WorkerJobTabFilter.inProgress;
+              if (!showFab) return const SizedBox.shrink();
+
+              return FloatingActionButton(
+                backgroundColor: FactoryColors.buttonRed,
+                elevation: 4,
+                shape: const CircleBorder(),
+                tooltip: 'Work In Progress',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const WorkInProgressScreen(),
+                    ),
+                  );
+                },
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(
+                      Icons.timelapse_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    if (vm.inProgressCount > 0)
+                      Positioned(
+                        right: -6,
+                        top: -6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 3,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            '${vm.inProgressCount}',
+                            style: const TextStyle(
+                              color: FactoryColors.buttonRed,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
         );
       },

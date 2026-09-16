@@ -332,11 +332,23 @@ class WorkerDashboardViewModel extends ViewModel {
   }
 
   void pauseJob(String jobId) {
-    _isTimerRunning = false;
+    final index = _jobs.indexWhere((j) => j.id == jobId);
+    if (index != -1) {
+      _jobs[index] = _jobs[index].copyWith(status: JobStatus.pending);
+    }
+    _isTimerRunning = _jobs.any(
+      (j) => j.status == JobStatus.inProgress || j.status == JobStatus.started,
+    );
     notifyListeners();
   }
 
   void stopAllJobs() {
+    for (int i = 0; i < _jobs.length; i++) {
+      if (_jobs[i].status == JobStatus.inProgress ||
+          _jobs[i].status == JobStatus.started) {
+        _jobs[i] = _jobs[i].copyWith(status: JobStatus.pending);
+      }
+    }
     _isTimerRunning = false;
     notifyListeners();
   }

@@ -7,6 +7,8 @@ import '../features/supervisor/view/select_employees_screen.dart';
 import '../features/supervisor/view/supervisor_dashboard_screen.dart';
 import '../features/supervisor/view/supervisor_job_card_details_screen.dart';
 import '../features/supervisor/view/supervisor_job_details_screen.dart';
+import '../features/worker/view/active_job_timer_screen.dart';
+import '../features/worker/view/job_details_screen.dart';
 import '../features/worker/view/work_in_progress_screen.dart';
 import '../features/worker/view/worker_dashboard_screen.dart';
 import '../features/worker/view/works_assigned_screen.dart';
@@ -23,6 +25,8 @@ class AppRoutes {
   static const String workerDashboard = WorkerDashboardScreen.routeName;
   static const String worksAssigned = WorksAssignedScreen.routeName;
   static const String workInProgress = WorkInProgressScreen.routeName;
+  static const String jobDetails = JobDetailsScreen.routeName;
+  static const String activeJobTimer = ActiveJobTimerScreen.routeName;
   static const String supervisorDashboard = SupervisorDashboardScreen.routeName;
   static const String selectEmployees = SelectEmployeesScreen.routeName;
   static const String supervisorJobCardDetails =
@@ -57,6 +61,12 @@ Widget? _getScreen(RouteSettings settings) {
       return ConnectionFailedScreen(
         param: params,
       );
+    case JobDetailsScreen.routeName:
+      final jobCard = settings.arguments as JobCardModel;
+      return JobDetailsScreen(job: jobCard);
+    case ActiveJobTimerScreen.routeName:
+      final jobCard = settings.arguments as JobCardModel;
+      return ActiveJobTimerScreen(job: jobCard);
     case SupervisorJobCardDetailsScreen.routeName:
       final jobCard = settings.arguments as JobCardModel;
       return SupervisorJobCardDetailsScreen(jobCard: jobCard);
