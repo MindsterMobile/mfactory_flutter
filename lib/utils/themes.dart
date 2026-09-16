@@ -1,9 +1,10 @@
 import 'package:PROJECT_NAME_PLACEHOLDER/utils/app_palette.dart';
 import 'package:PROJECT_NAME_PLACEHOLDER/utils/brand_colors.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-// Central seed color for the app's ColorScheme (brand primary blue)
-const Color _seedColor = Color(0xFF2563EB);
+// Central seed color for the app's ColorScheme (JewelCraft Midnight Sapphire)
+const Color _seedColor = Color(0xFF1B2D4F);
 
 // Shared corner radius
 const double _radius = 12;
@@ -42,12 +43,37 @@ ThemeData _buildTheme({required Brightness brightness}) {
     scaffoldBackgroundColor:
         isDark ? const Color(0xFF010413) : colorScheme.surface,
 
+    canvasColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+    popupMenuTheme: PopupMenuThemeData(
+      color: isDark ? const Color(0xFF1E293B) : Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      textStyle: TextStyle(
+        color: isDark ? Colors.white : const Color(0xFF1E293B),
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+    ),
+    dropdownMenuTheme: DropdownMenuThemeData(
+      menuStyle: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(
+          isDark ? const Color(0xFF1E293B) : Colors.white,
+        ),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+      ),
+    ),
+
     appBarTheme: AppBarTheme(
       elevation: 0,
       centerTitle: false,
       backgroundColor: colorScheme.surface,
       surfaceTintColor: colorScheme.surfaceTint,
       foregroundColor: colorScheme.onSurface,
+      systemOverlayStyle: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      ),
       titleTextStyle: base.textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.w600,
         color: colorScheme.onSurface,
@@ -242,7 +268,7 @@ ThemeData _buildTheme({required Brightness brightness}) {
 
 // Offline font switching:
 // set to true after you bundle font assets in pubspec.yaml
-const bool kUseBundledFonts = true;
+const bool kUseBundledFonts = false;
 const String kEnFontFamily = 'HostGrotesk';
 const String kJaFontFamily = 'IBMPlexSansJP';
 

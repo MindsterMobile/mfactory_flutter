@@ -7,33 +7,26 @@ class UrlHelpers {
   static String get baseURL {
     switch (server) {
       case EnumBuildEnvironment.live:
-        return '/// add url for live';
+        return 'https://mi-factory.aufy.net/';
       case EnumBuildEnvironment.uat:
-        return '/// add url for uat';
+        return 'https://mi-factory.aufy.net/';
       case EnumBuildEnvironment.dg:
-        return '/// add url for dg';
-      }
+        return 'https://mi-factory.aufy.net/';
+    }
   }
 
   static String get key {
     switch (server) {
       case EnumBuildEnvironment.live:
-        return '/// add key for live';
+        return '';
       case EnumBuildEnvironment.uat:
-        return '/// add key for uat';
+        return '';
       case EnumBuildEnvironment.dg:
-        return '/// add key for dg';
-      }
+        return '';
+    }
   }
 
   static String get baseUrlApi {
-    switch (server) {
-      case EnumBuildEnvironment.live:
-        return '/// add apiHead for live';
-      case EnumBuildEnvironment.uat:
-        return '/// add apiHead for uat';
-      case EnumBuildEnvironment.dg:
-        return '/// add apiHead for dg';
-      }
+    return '${baseURL}api/v1/';
   }
 }

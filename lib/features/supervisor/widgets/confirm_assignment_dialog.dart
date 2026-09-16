@@ -1,0 +1,238 @@
+import 'package:flutter/material.dart';
+
+import '../../../models/employee_model.dart';
+import '../../../utils/colors.dart';
+import '../../../utils/styles.dart';
+
+/// Modal bottom sheet matching Figma and device screenshot: "Confirm Assignment"
+class ConfirmAssignmentBottomSheet extends StatelessWidget {
+  final String jobCardId;
+  final List<EmployeeModel> employees;
+  final VoidCallback onCancel;
+  final VoidCallback onSubmit;
+
+  const ConfirmAssignmentBottomSheet({
+    super.key,
+    required this.jobCardId,
+    required this.employees,
+    required this.onCancel,
+    required this.onSubmit,
+  });
+
+  /// Helper to show this bottom sheet
+  static Future<T?> show<T>({
+    required BuildContext context,
+    required String jobCardId,
+    required List<EmployeeModel> employees,
+    required VoidCallback onCancel,
+    required VoidCallback onSubmit,
+  }) {
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => ConfirmAssignmentBottomSheet(
+        jobCardId: jobCardId,
+        employees: employees,
+        onCancel: onCancel,
+        onSubmit: onSubmit,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header: Confirm Assignment + Close 'X'
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Confirm Assignment',
+                style: tsS18W700.copyWith(
+                  color: FactoryColors.textPrimary,
+                ),
+              ),
+              InkWell(
+                onTap: onCancel,
+                borderRadius: BorderRadius.circular(20),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 22,
+                    color: FactoryColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+
+          // Top Box: Job Card ID
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: FactoryColors.background,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Job Card ID',
+                  style: tsS13W500.copyWith(
+                    color: FactoryColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  jobCardId,
+                  style: tsS14W700.copyWith(
+                    color: FactoryColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Middle Box: Description & Numbered Employee List
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: FactoryColors.background,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'You are about to assign the following employees to $jobCardId',
+                  style: tsS13W500.copyWith(
+                    height: 1.4,
+                    color: FactoryColors.textSlate,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ...employees.asMap().entries.map((entry) {
+                  final index = entry.key + 1;
+                  final emp = entry.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$index ',
+                          style: tsS14W500.copyWith(
+                            color: FactoryColors.textSecondary,
+                          ),
+                        ),
+                        Expanded(
+                          child: RichText(
+                            text: TextSpan(
+                              style: tsS14W500.copyWith(
+                                color: FactoryColors.textPrimary,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: emp.name,
+                                  style: tsS14W700.copyWith(
+                                    color: FactoryColors.textPrimary,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: '(${emp.id})',
+                                  style: tsS14W500.copyWith(
+                                    color: FactoryColors.textSlate,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Buttons: Cancel & Submit
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: onCancel,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(
+                        color: FactoryColors.borderCheckbox,
+                        width: 1.2,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      backgroundColor: Colors.white,
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: tsS15W600.copyWith(
+                        color: FactoryColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: onSubmit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: FactoryColors.primary,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Submit',
+                      style: tsS15W700.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Backwards compatibility alias
+typedef ConfirmAssignmentDialog = ConfirmAssignmentBottomSheet;

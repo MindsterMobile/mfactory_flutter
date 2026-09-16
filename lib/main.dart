@@ -12,6 +12,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 
 import 'features/splashscreen/view/splashscreen.dart';
+import 'features/supervisor/view_model/supervisor_dashboard_view_model.dart';
+import 'features/worker/view_model/worker_dashboard_view_model.dart';
 import 'providers/language_provider.dart';
 import 'providers/theme_provider.dart';
 import 'utils/interceptors.dart';
@@ -19,7 +21,16 @@ import 'utils/localization.dart';
 import 'utils/routes.dart';
 import 'utils/themes.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ),
+  );
   runApp(const MyApp());
 }
 
@@ -39,6 +50,12 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (context) => LanguageProvider(),
         ),
+        ChangeNotifierProvider(
+          create: (context) => WorkerDashboardViewModel(),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => SupervisorDashboardViewModel(),
+        ),
       ],
       builder: (context, child) => ScreenUtilInit(
         designSize: Size(
@@ -46,7 +63,7 @@ class MyApp extends StatelessWidget {
           AppConfig.designHeight.toDouble(),
         ),
         builder: (context, child) => AdaptiveTheme(
-          initial: AdaptiveThemeMode.dark,
+          initial: AdaptiveThemeMode.light,
           light: appLightTheme,
           dark: appDarkTheme,
           builder: (theme, darkTheme) {
