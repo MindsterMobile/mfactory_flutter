@@ -9,17 +9,26 @@ class CircularGaugeTimerWidget extends StatelessWidget {
   final double progress; // 0.0 to 1.0
   final double size;
   final Widget? overlayWidget;
+  final bool isPaused;
+  final String? statusText;
+  final Color? progressColor;
 
   const CircularGaugeTimerWidget({
     super.key,
     required this.formattedTime,
-    this.progress = 0.65,
+    this.progress = 0.0,
     this.size = 200,
     this.overlayWidget,
+    this.isPaused = false,
+    this.statusText,
+    this.progressColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final effectiveProgressColor = progressColor ??
+        (isPaused ? const Color(0xFFF59E0B) : FactoryColors.timerArc);
+
     return SizedBox(
       width: size,
       height: size,
@@ -27,27 +36,81 @@ class CircularGaugeTimerWidget extends StatelessWidget {
         alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: [
-          // Circular arc painter
-          CustomPaint(
-            size: Size(size, size),
-            painter: _GaugeArcPainter(
-              progress: progress,
-              strokeWidth: size * 0.08,
-              trackColor: const Color(0xFFFBF4E8),
-              progressColor: FactoryColors.timerArc,
+          // Smoothly animated circular arc painter
+          TweenAnimationBuilder<double>(
+            key: ValueKey(isPaused),
+            tween: Tween<double>(
+              begin: progress,
+              end: progress,
             ),
+            duration: isPaused
+                ? const Duration(milliseconds: 250)
+                : (progress <= 0.02
+                    ? Duration.zero
+                    : const Duration(milliseconds: 950)),
+            curve: Curves.linear,
+            builder: (context, animatedProgress, child) {
+              return CustomPaint(
+                size: Size(size, size),
+                painter: _GaugeArcPainter(
+                  progress: animatedProgress,
+                  strokeWidth: size * 0.08,
+                  trackColor: const Color(0xFFFBF4E8),
+                  progressColor: effectiveProgressColor,
+                ),
+              );
+            },
           ),
 
-          // Center Time Text
+          // Center Time Text and optional Status Badge
           Center(
-            child: Text(
-              formattedTime,
-              style: FactoryTypography.display.copyWith(
-                fontSize: size * 0.16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
-                color: FactoryColors.textPrimary,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  formattedTime,
+                  style: FactoryTypography.display.copyWith(
+                    fontSize: size * 0.16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: isPaused
+                        ? const Color(0xFF475569)
+                        : FactoryColors.textPrimary,
+                  ),
+                ),
+                if (statusText != null && statusText!.isNotEmpty) ...[
+                  SizedBox(height: size * 0.025),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: size * 0.05,
+                      vertical: size * 0.015,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isPaused
+                          ? const Color(0xFFFEF3C7)
+                          : const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(size * 0.05),
+                      border: Border.all(
+                        color: isPaused
+                            ? const Color(0xFFF59E0B)
+                            : const Color(0xFF16A34A),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      statusText!,
+                      style: TextStyle(
+                        fontSize: size * 0.052,
+                        fontWeight: FontWeight.w700,
+                        color: isPaused
+                            ? const Color(0xFFD97706)
+                            : const Color(0xFF15803D),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
 
@@ -90,6 +153,8 @@ class _GaugeArcPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     canvas.drawCircle(center, radius, trackPaint);
+
+    if (progress <= 0.0) return;
 
     // Active progress arc starting from top-left / 135 degrees
     final progressPaint = Paint()

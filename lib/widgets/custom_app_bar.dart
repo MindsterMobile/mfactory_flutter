@@ -122,12 +122,10 @@ AppBar buildAppBar(
     elevation: 0,
     iconTheme: IconThemeData(color: AppColors().colorBlack),
     backgroundColor: AppColors().colorWhite,
-    systemOverlayStyle: SystemUiOverlayStyle(
-      statusBarColor: AppColors().colorWhite,
-      // <-- SEE HERE
-      statusBarIconBrightness: Brightness.light,
-      //<-- For Android SEE HERE (dark icons)
-      statusBarBrightness: Brightness.light, //<-- For iOS SEE HERE (dark icons)
+    systemOverlayStyle: const SystemUiOverlayStyle(
+      statusBarColor: Colors.white,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
     ),
   );
 }

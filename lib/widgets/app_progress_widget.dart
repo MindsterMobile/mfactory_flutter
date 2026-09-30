@@ -1,16 +1,26 @@
 import 'package:flutter/material.dart';
+import '../utils/colors.dart';
 
 class AppProgressWidget extends StatelessWidget {
-  const AppProgressWidget({super.key});
+  final Color? color;
+  final double size;
+
+  const AppProgressWidget({
+    super.key,
+    this.color,
+    this.size = 32,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      width: 28,
-      height: 28,
-      child: const FittedBox(
-        child: CircularProgressIndicator(),
+    return Center(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: CircularProgressIndicator(
+          color: color ?? FactoryColors.primary,
+          strokeWidth: 3,
+        ),
       ),
     );
   }

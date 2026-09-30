@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../utils/colors.dart';
 import '../utils/dimensions.dart';
 import '../utils/styles.dart';
@@ -31,6 +32,12 @@ class MGDAppBar extends StatelessWidget implements PreferredSizeWidget {
       elevation: 0,
       scrolledUnderElevation: 0,
       backgroundColor: isTransparent ? Colors.transparent : FactoryColors.surface,
+      systemOverlayStyle: SystemUiOverlayStyle(
+        statusBarColor:
+            isTransparent ? Colors.transparent : FactoryColors.surface,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ),
       centerTitle: false,
       title: Text(
         title,

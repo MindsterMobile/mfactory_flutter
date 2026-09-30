@@ -35,6 +35,12 @@ class SpHelper {
     return await _sp?.clear();
   }
 
+  /// Remove saved item by key
+  static Future<bool> remove(String key) async {
+    final sp = await getSP();
+    return await sp.remove(key);
+  }
+
   ///
   ///## Read saved String
   ///[key] name given to save.

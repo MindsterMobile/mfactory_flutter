@@ -1,18 +1,21 @@
 import '../features/auth/view/choose_location_screen.dart';
 import '../features/auth/view/login_screen.dart';
 import '../features/splashscreen/view/splashscreen.dart';
+import '../features/notifications/view/notifications_screen.dart';
 import '../features/supervisor/view/product_report_screen.dart';
 import '../features/supervisor/view/reports_list_screen.dart';
 import '../features/supervisor/view/select_employees_screen.dart';
 import '../features/supervisor/view/supervisor_dashboard_screen.dart';
 import '../features/supervisor/view/supervisor_job_card_details_screen.dart';
 import '../features/supervisor/view/supervisor_job_details_screen.dart';
+import '../features/supervisor/view/weekly_detail_report_screen.dart';
 import '../features/worker/view/active_job_timer_screen.dart';
 import '../features/worker/view/job_details_screen.dart';
 import '../features/worker/view/work_in_progress_screen.dart';
 import '../features/worker/view/worker_dashboard_screen.dart';
 import '../features/worker/view/works_assigned_screen.dart';
 import '../models/job_card_model.dart';
+import '../models/report_models.dart';
 import '../utils/connection_failed_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -35,6 +38,8 @@ class AppRoutes {
       SupervisorJobDetailsScreen.routeName;
   static const String reportsList = ReportsListScreen.routeName;
   static const String productReport = ProductReportScreen.routeName;
+  static const String weeklyDetailReport = WeeklyDetailReportScreen.routeName;
+  static const String notifications = NotificationsScreen.routeName;
 }
 
 Map<String, Widget Function(BuildContext context)> appRoutes() => {
@@ -51,6 +56,7 @@ Map<String, Widget Function(BuildContext context)> appRoutes() => {
           const SelectEmployeesScreen(),
       ReportsListScreen.routeName: (context) => const ReportsListScreen(),
       ProductReportScreen.routeName: (context) => const ProductReportScreen(),
+      NotificationsScreen.routeName: (context) => const NotificationsScreen(),
     };
 
 Widget? _getScreen(RouteSettings settings) {
@@ -73,6 +79,9 @@ Widget? _getScreen(RouteSettings settings) {
     case SupervisorJobDetailsScreen.routeName:
       final jobCard = settings.arguments as JobCardModel;
       return SupervisorJobDetailsScreen(jobCard: jobCard);
+    case WeeklyDetailReportScreen.routeName:
+      final item = settings.arguments as WeeklyReportItem;
+      return WeeklyDetailReportScreen(reportItem: item);
 
     default:
       return null;

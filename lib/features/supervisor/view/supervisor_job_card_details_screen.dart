@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
+import '../../../models/employee_model.dart';
 import '../../../models/job_card_model.dart';
 import '../../../models/job_status.dart';
+import '../../../utils/app_build_methods.dart';
 import '../../../utils/colors.dart';
 import '../../../utils/styles.dart';
+import '../../../utils/time_zone_helper.dart';
 import '../../../widgets/status_badge.dart';
+import '../../../services/api_service.dart';
+import '../../worker/widgets/job_completion_dialogs.dart';
+import '../view_model/supervisor_dashboard_view_model.dart';
 import '../widgets/sync_weight_machine_dialog.dart';
 import 'select_employees_screen.dart';
 
@@ -17,6 +24,7 @@ class WorkerAssignmentRecord {
   final double weightGm;
   final String timeSpent;
   final JobStatus status;
+  final String? statusName;
 
   const WorkerAssignmentRecord({
     required this.workerName,
@@ -25,6 +33,7 @@ class WorkerAssignmentRecord {
     required this.weightGm,
     required this.timeSpent,
     required this.status,
+    this.statusName,
   });
 }
 
@@ -52,148 +61,337 @@ class _SupervisorJobCardDetailsScreenState
   void initState() {
     super.initState();
     _workerRecords = [];
-    if (widget.jobCard.assignedWorkerName != null &&
-        widget.jobCard.assignedWorkerName!.isNotEmpty) {
-      _workerRecords.add(
-        WorkerAssignmentRecord(
-          workerName: widget.jobCard.assignedWorkerName!,
-          workerId: widget.jobCard.assignedWorkerId ?? '',
-          dateText: widget.jobCard.dateText,
-          weightGm: widget.jobCard.grossWeightGm,
-          timeSpent: widget.jobCard.timeSpentText ?? '',
-          status: widget.jobCard.status,
-        ),
-      );
+    _initWorkerRecords(widget.jobCard);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final vm = context.read<SupervisorDashboardViewModel>();
+        final idToFetch = widget.jobCard.dbId ??
+            int.tryParse(widget.jobCard.id) ??
+            int.tryParse(RegExp(r'\d+').firstMatch(widget.jobCard.id)?.group(0) ?? '') ??
+            widget.jobCard.id;
+        vm.fetchJobCardDetails(idToFetch);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    try {
+      context.read<SupervisorDashboardViewModel>().clearJobDetails();
+    } catch (_) {}
+    super.dispose();
+  }
+
+  void _initWorkerRecords(JobCardModel jobCard, [SupervisorDashboardViewModel? vm]) {
+    _workerRecords.clear();
+
+    String? name = jobCard.assignedWorkerName;
+    String? id = jobCard.assignedWorkerId;
+
+    // Resolve name from supervisor employees if ID is available
+    if ((name == null || name.trim().isEmpty) && id != null && id.trim().isNotEmpty && vm != null) {
+      final cleanId = id.replaceAll(RegExp(r'[^0-9]'), '');
+      final emp = vm.employees.cast<EmployeeModel?>().firstWhere(
+            (e) =>
+                e?.id == id ||
+                e?.id == cleanId ||
+                e?.employeeCode == id ||
+                (cleanId.isNotEmpty && e?.dbId == int.tryParse(cleanId)),
+            orElse: () => null,
+          );
+      if (emp != null && emp.name.isNotEmpty) {
+        name = emp.name;
+        if (id.isEmpty) id = emp.employeeCode.isNotEmpty ? emp.employeeCode : emp.id;
+      }
+    }
+
+    // If job is in progress / started or has worker ID, ensure record exists
+    final isAssignedOrWorking = (id != null && id.trim().isNotEmpty) ||
+        (name != null && name.trim().isNotEmpty) ||
+        jobCard.status == JobStatus.inProgress ||
+        jobCard.status == JobStatus.started ||
+        jobCard.status == JobStatus.reAssigned;
+
+    if (isAssignedOrWorking) {
+      if (name == null || name.trim().isEmpty) {
+        if (id != null && id.trim().isNotEmpty) {
+          name = id.startsWith('EMPID') ? id : 'Worker #$id';
+        } else {
+          name = 'Assigned Worker';
+        }
+      }
+      id ??= '';
+
+      final names = name
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      final ids = id
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+      for (int i = 0; i < names.length; i++) {
+        final workerId = i < ids.length ? ids[i] : (ids.isNotEmpty ? ids.first : '');
+        _workerRecords.add(
+          WorkerAssignmentRecord(
+            workerName: names[i],
+            workerId: workerId,
+            dateText: jobCard.dateText.isNotEmpty
+                ? TimezoneHelper.formatDateOnly(jobCard.dateText)
+                : '-',
+            weightGm: jobCard.grossWeightGm,
+            timeSpent: jobCard.timeSpentText ?? '',
+            status: jobCard.status,
+            statusName: jobCard.statusName,
+          ),
+        );
+      }
     }
   }
 
-  void _handleUnassignWorker(WorkerAssignmentRecord record) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetCtx) => SyncWeightMachineBottomSheet(
-        jobCardId: widget.jobCard.id,
-        initialWeight: record.weightGm,
-        onSubmit: (weight) {
-          setState(() {
-            final index = _workerRecords.indexOf(record);
-            if (index != -1) {
-              _workerRecords[index] = WorkerAssignmentRecord(
-                workerName: record.workerName,
-                workerId: record.workerId,
-                dateText: record.dateText,
-                weightGm: weight,
-                timeSpent: record.timeSpent,
-                status: JobStatus.completed,
-              );
+
+
+  void _handleCompleteJob(JobCardModel job) {
+    JobCompletedModal.show(
+      context,
+      job: job,
+      onConfirmed: () async {
+        final result = await SyncWeightMachineBottomSheet.show<double>(
+          context: context,
+          jobCardId: job.id,
+          initialWeight: job.grossWeightGm,
+          onSubmit: (newWeight) async {
+            final vm = context.read<SupervisorDashboardViewModel>();
+            try {
+              final success =
+                  await vm.submitWeightAndComplete(job.id, newWeight);
+              if (success) {
+                final apiMsg = vm.lastSuccessMessage;
+                if (apiMsg != null && apiMsg.isNotEmpty) {
+                  showToast(apiMsg);
+                }
+                return true;
+              } else {
+                final err = vm.errorMessage ?? 'Failed to submit weight';
+                showToast(err);
+                return false;
+              }
+            } catch (e) {
+              debugPrint('Error completing job: $e');
+              showToast(ApiService.extractErrorMessage(e));
+              rethrow;
             }
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Worker ${record.workerName} unassigned and synced ($weight gm).',
-              ),
-              backgroundColor: FactoryColors.statusCompletedText,
-            ),
+          },
+        );
+
+        if (result != null && mounted) {
+          JobCompletedSuccessDialog.show(
+            context,
+            jobCardId: job.id,
+            onDismiss: () {
+              final idToFetch = job.dbId ??
+                  int.tryParse(job.id) ??
+                  int.tryParse(RegExp(r'\d+').firstMatch(job.id)?.group(0) ?? '') ??
+                  job.id;
+              context.read<SupervisorDashboardViewModel>().fetchJobCardDetails(idToFetch);
+            },
           );
-        },
+        }
+      },
+    );
+  }
+
+  void _navigateToAssignWorker(JobCardModel job) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SelectEmployeesScreen(
+          jobCardId: job.id,
+        ),
+      ),
+    );
+    if (mounted) {
+      final vm = context.read<SupervisorDashboardViewModel>();
+      final idToFetch = job.dbId ??
+          int.tryParse(job.id) ??
+          int.tryParse(RegExp(r'\d+').firstMatch(job.id)?.group(0) ?? '') ??
+          job.id;
+      vm.fetchJobCardDetails(idToFetch);
+    }
+  }
+
+  Widget _buildEmptyWorkerState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: FactoryColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: FactoryColors.shadowColor,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: FactoryColors.surfaceLightGrey,
+            ),
+            child: const Icon(
+              Icons.person_outline_rounded,
+              size: 28,
+              color: FactoryColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No Worker Assigned',
+            style: tsS15W600.copyWith(
+              color: FactoryColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'This job card has not been assigned to a worker yet.',
+            textAlign: TextAlign.center,
+            style: tsS12W400.copyWith(
+              color: FactoryColors.textSecondary,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: FactoryColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.white,
-          statusBarIconBrightness: Brightness.dark,
-          statusBarBrightness: Brightness.light,
-        ),
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_rounded,
-            color: FactoryColors.textPrimary,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          'Job Card Details',
-          style: tsS17W700.copyWith(
-            color: FactoryColors.textPrimary,
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(
-            height: 1,
-            color: FactoryColors.border,
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 1. Top Job Card Summary Tile
-            _buildJobCardSummary(widget.jobCard),
-            const SizedBox(height: 16),
+    return Consumer<SupervisorDashboardViewModel>(
+      builder: (context, vm, child) {
+        final liveJob = vm.currentJobDetails;
+        final effectiveJob = (liveJob != null &&
+                (liveJob.id == widget.jobCard.id ||
+                    (liveJob.dbId != null &&
+                        widget.jobCard.dbId != null &&
+                        liveJob.dbId == widget.jobCard.dbId)))
+            ? liveJob
+            : widget.jobCard;
 
-            // 2. Assigned Workers Section Title
-            Text(
-              'Assigned Workers',
-              style: tsS15W700.copyWith(
+        _initWorkerRecords(effectiveJob, vm);
+
+        final isCompleted = effectiveJob.status == JobStatus.completed ||
+            effectiveJob.statusName?.trim().toLowerCase() == 'completed';
+        final hasAssignedWorker = _workerRecords.isNotEmpty;
+
+        return Scaffold(
+          backgroundColor: FactoryColors.background,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            systemOverlayStyle: const SystemUiOverlayStyle(
+              statusBarColor: Colors.white,
+              statusBarIconBrightness: Brightness.dark,
+              statusBarBrightness: Brightness.light,
+            ),
+            leading: IconButton(
+              icon: const Icon(
+                Icons.arrow_back_rounded,
+                color: FactoryColors.textPrimary,
+              ),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            title: Text(
+              'Job Card Details',
+              style: tsS17W700.copyWith(
                 color: FactoryColors.textPrimary,
               ),
             ),
-            const SizedBox(height: 12),
-
-            // 3. Worker Assignment Cards with Table
-            ..._workerRecords.map((record) => _buildWorkerAssignmentCard(record)),
-          ],
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SelectEmployeesScreen(
-                      jobCardId: widget.jobCard.id,
-                    ),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: FactoryColors.primary,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: Text(
-                'Assign to Workers',
-                style: tsS14W700.copyWith(color: Colors.white),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(
+                height: 1,
+                color: FactoryColors.border,
               ),
             ),
           ),
-        ),
-      ),
+          body: vm.isLoadingJobDetails
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: FactoryColors.primary,
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 1. Top Job Card Summary Tile
+                      _buildJobCardSummary(effectiveJob),
+                      const SizedBox(height: 16),
+
+                      // 2. Assigned Worker Section Title
+                      Text(
+                        'Assigned Worker',
+                        style: tsS15W700.copyWith(
+                          color: FactoryColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // 3. Worker Assignment Cards or Empty State
+                      if (hasAssignedWorker)
+                        ..._workerRecords.map((record) =>
+                            _buildWorkerAssignmentCard(
+                                vm, effectiveJob, record))
+                      else
+                        _buildEmptyWorkerState(),
+                    ],
+                  ),
+                ),
+          bottomNavigationBar: vm.isLoadingJobDetails ||
+                  isCompleted ||
+                  !hasAssignedWorker
+              ? null
+              : Container(
+                  color: Colors.white,
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => _navigateToAssignWorker(effectiveJob),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: FactoryColors.primary,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            'Reassign Worker',
+                            style: tsS14W700.copyWith(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+        );
+      },
     );
   }
 
@@ -236,151 +434,179 @@ class _SupervisorJobCardDetailsScreenState
                     ),
                   ],
                 ),
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: const BoxDecoration(
-                    color: FactoryColors.primary,
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '1',
-                    style: tsS11W700.copyWith(
-                      color: Colors.white,
+                if (_workerRecords.isNotEmpty)
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: const BoxDecoration(
+                      color: FactoryColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${_workerRecords.length}',
+                      style: tsS11W700.copyWith(
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
           const Divider(height: 1, color: FactoryColors.dividerLight),
 
-          // Details & Dual Images
+          // Details: Voucher ID (left) + Time Taken (right in magenta)
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Specs
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Voucher ID:',
-                        style: tsS11W500.copyWith(
-                          color: FactoryColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        job.voucherId,
-                        style: tsS13W700.copyWith(
-                          color: FactoryColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Design No',
-                                style: tsS11W500.copyWith(
-                                  color: FactoryColors.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                job.designNo,
-                                style: tsS12W700.copyWith(
-                                  color: FactoryColors.textPrimary,
-                                ),
-                              ),
-                            ],
+                          Text(
+                            'Voucher ID:',
+                            style: tsS11W500.copyWith(
+                              color: FactoryColors.textSecondary,
+                            ),
                           ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Pieces',
-                                style: tsS11W500.copyWith(
-                                  color: FactoryColors.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${job.pieces}',
-                                style: tsS12W700.copyWith(
-                                  color: FactoryColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Weight',
-                                style: tsS11W500.copyWith(
-                                  color: FactoryColors.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${job.grossWeightGm.toStringAsFixed(0)} gm',
-                                style: tsS12W700.copyWith(
-                                  color: FactoryColors.textPrimary,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(height: 2),
+                          Text(
+                            job.voucherId,
+                            overflow: TextOverflow.ellipsis,
+                            style: tsS13W700.copyWith(
+                              color: FactoryColors.textPrimary,
+                            ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-
-                // Dual ring images + Status Badge
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
+                    ),
+                    const SizedBox(width: 8),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Image.asset(
-                            'assets/images/ring_front.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.diamond_outlined,
-                              color: FactoryColors.accentGold,
-                              size: 20,
+                        if (job.displayAssignedTime != '-') ...[
+                          Text(
+                            'Assigned : ',
+                            style: tsS12W500.copyWith(
+                              color: FactoryColors.textSecondary,
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Image.asset(
-                            'assets/images/ring_side.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.circle_outlined,
-                              color: FactoryColors.accentGold,
-                              size: 20,
+                          Text(
+                            job.displayAssignedTime,
+                            style: tsS12W700.copyWith(
+                              color: const Color(0xFF1E293B),
                             ),
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                        Text(
+                          'Time Taken : ',
+                          style: tsS12W500.copyWith(
+                            color: FactoryColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          job.timeSpentText ?? '0 hrs 00 mins',
+                          style: tsS12W700.copyWith(
+                            color: FactoryColors.primary,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    StatusBadge(status: job.status),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // Specs: Design No, Pieces, Weight
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Design No',
+                            style: tsS11W500.copyWith(
+                              color: FactoryColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            job.designNo,
+                            style: tsS12W700.copyWith(
+                              color: FactoryColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Pieces',
+                            style: tsS11W500.copyWith(
+                              color: FactoryColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${job.pieces}',
+                            style: tsS12W700.copyWith(
+                              color: FactoryColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Weight',
+                            style: tsS11W500.copyWith(
+                              color: FactoryColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${job.grossWeightGm.toStringAsFixed(0)} gm',
+                            style: tsS12W700.copyWith(
+                              color: FactoryColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // Bottom Status Row in Summary Card matching Figma
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Status',
+                      style: tsS13W400.copyWith(
+                        color: FactoryColors.textSecondary,
+                      ),
+                    ),
+                    StatusBadge(
+                      status: job.status,
+                      customLabel: job.statusName,
+                    ),
                   ],
                 ),
               ],
@@ -391,8 +617,39 @@ class _SupervisorJobCardDetailsScreenState
     );
   }
 
-  Widget _buildWorkerAssignmentCard(WorkerAssignmentRecord record) {
-    final isInProgress = record.status == JobStatus.inProgress;
+  Widget _buildWorkerAssignmentCard(
+    SupervisorDashboardViewModel vm,
+    JobCardModel effectiveJob,
+    WorkerAssignmentRecord record,
+  ) {
+    final isInProgress = record.status == JobStatus.inProgress ||
+        record.status == JobStatus.started;
+    final isCompleted = record.status == JobStatus.completed ||
+        record.statusName?.trim().toLowerCase() == 'completed' ||
+        effectiveJob.status == JobStatus.completed;
+
+    // Filter sessions matching this worker
+    final sessions = vm.currentJobSessions.where((s) {
+      if (record.workerId.isNotEmpty) {
+        final cleanId = record.workerId.replaceAll(RegExp(r'[^0-9]'), '');
+        if (s.workerId.toString() == record.workerId ||
+            (cleanId.isNotEmpty && s.workerId.toString() == cleanId)) {
+          return true;
+        }
+      }
+      if (record.workerName.isNotEmpty &&
+          s.workerName != null &&
+          s.workerName!.toLowerCase() == record.workerName.toLowerCase()) {
+        return true;
+      }
+      return false;
+    }).toList();
+
+    final effectiveSessions = sessions.isNotEmpty
+        ? sessions
+        : (_workerRecords.length == 1
+            ? vm.currentJobSessions
+            : <WorkSessionModel>[]);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -413,7 +670,7 @@ class _SupervisorJobCardDetailsScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Top: Worker Avatar + Name + Status Badge
+            // Top: Worker Avatar + Name + EMPID
             Row(
               children: [
                 Container(
@@ -421,22 +678,26 @@ class _SupervisorJobCardDetailsScreenState
                   height: 36,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: FactoryColors.drawerGradientStart,
+                    color: FactoryColors.primarySurface,
                     border: Border.all(
                       color: FactoryColors.primary.withValues(alpha: 0.3),
                     ),
                   ),
-                  child: ClipOval(
-                    child: Image.asset(
-                      'assets/images/worker_avatar.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.person_rounded,
-                        color: FactoryColors.primary,
-                        size: 20,
-                      ),
-                    ),
-                  ),
+                  alignment: Alignment.center,
+                  child: record.workerName.trim().isNotEmpty
+                      ? Text(
+                          record.workerName.trim()[0].toUpperCase(),
+                          style: const TextStyle(
+                            color: FactoryColors.primary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.person_rounded,
+                          color: FactoryColors.primary,
+                          size: 20,
+                        ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -459,16 +720,51 @@ class _SupervisorJobCardDetailsScreenState
                     ],
                   ),
                 ),
-                StatusBadge(status: record.status),
               ],
             ),
             const SizedBox(height: 12),
 
-            // Beige / Tan Table Header Bar (Date | Weight | Time)
+            // Time Taken + Status Row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Text(
+                        'Time Taken: ',
+                        style: tsS12W500.copyWith(
+                          color: FactoryColors.textSecondary,
+                        ),
+                      ),
+                      Flexible(
+                        child: Text(
+                          record.timeSpent.isNotEmpty
+                              ? record.timeSpent
+                              : (effectiveJob.timeSpentText ?? '0 hrs 00 mins'),
+                          overflow: TextOverflow.ellipsis,
+                          style: tsS13W700.copyWith(
+                            color: FactoryColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                StatusBadge(
+                  status: record.status,
+                  customLabel: record.statusName,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Cream / Warm Beige Table Header Bar (Date | Start | Stop)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: FactoryColors.surfaceWarmBeige,
+                color: const Color(0xFFFBF4EE),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Row(
@@ -484,7 +780,7 @@ class _SupervisorJobCardDetailsScreenState
                   Expanded(
                     child: Center(
                       child: Text(
-                        'Weight',
+                        'Start',
                         style: tsS12W700.copyWith(
                           color: FactoryColors.textSlate,
                         ),
@@ -495,7 +791,7 @@ class _SupervisorJobCardDetailsScreenState
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: Text(
-                        'Time',
+                        'Stop',
                         style: tsS12W700.copyWith(
                           color: FactoryColors.textSlate,
                         ),
@@ -507,49 +803,125 @@ class _SupervisorJobCardDetailsScreenState
             ),
             const SizedBox(height: 8),
 
-            // Table Data Row
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      record.dateText,
-                      style: tsS12W600.copyWith(
-                        color: FactoryColors.textPrimary,
+            // Table Data Rows
+            if (effectiveSessions.isNotEmpty)
+              ...effectiveSessions.map((session) {
+                final dateStr = session.startTime != null &&
+                        session.startTime!.isNotEmpty
+                    ? TimezoneHelper.formatDateOnly(session.startTime!)
+                    : (session.createdAt != null && session.createdAt!.isNotEmpty
+                        ? TimezoneHelper.formatDateOnly(session.createdAt!)
+                        : record.dateText);
+                final startStr = session.startTime != null &&
+                        session.startTime!.isNotEmpty
+                    ? TimezoneHelper.formatTimeOnly(session.startTime!)
+                    : '-';
+                final stopStr = session.endTime != null &&
+                        session.endTime!.isNotEmpty
+                    ? TimezoneHelper.formatTimeOnly(session.endTime!)
+                    : (isInProgress || effectiveJob.status == JobStatus.inProgress
+                        ? 'Running...'
+                        : '-');
+                return Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          dateStr,
+                          style: tsS12W600.copyWith(
+                            color: FactoryColors.textPrimary,
+                          ),
+                        ),
                       ),
-                    ),
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            startStr,
+                            style: tsS12W700.copyWith(
+                              color: const Color(0xFF0D9488),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            stopStr,
+                            style: tsS12W700.copyWith(
+                              color: stopStr == 'Running...'
+                                  ? FactoryColors.primary
+                                  : const Color(0xFFE11D48),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  Expanded(
-                    child: Center(
+                );
+              })
+            else
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
                       child: Text(
-                        '${record.weightGm.toStringAsFixed(2)} gm',
-                        style: tsS12W700.copyWith(
-                          color: FactoryColors.textTeal,
+                        effectiveJob.startTimeText != null &&
+                                effectiveJob.startTimeText!.isNotEmpty
+                            ? TimezoneHelper.formatDateOnly(effectiveJob.startTimeText!)
+                            : record.dateText,
+                        style: tsS12W600.copyWith(
+                          color: FactoryColors.textPrimary,
                         ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        record.timeSpent,
-                        style: tsS12W700.copyWith(
-                          color: FactoryColors.textOrange,
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          effectiveJob.startTimeText != null &&
+                                  effectiveJob.startTimeText!.isNotEmpty
+                              ? TimezoneHelper.formatTimeOnly(effectiveJob.startTimeText!)
+                              : '-',
+                          style: tsS12W700.copyWith(
+                            color: const Color(0xFF0D9488),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          effectiveJob.stopTimeText != null &&
+                                  effectiveJob.stopTimeText!.isNotEmpty
+                              ? TimezoneHelper.formatTimeOnly(effectiveJob.stopTimeText!)
+                              : (isInProgress ||
+                                      effectiveJob.status == JobStatus.inProgress ||
+                                      effectiveJob.status == JobStatus.started
+                                  ? 'Running...'
+                                  : '-'),
+                          style: tsS12W700.copyWith(
+                            color: const Color(0xFFE11D48),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
 
-            // Action Button: Unassign Worker if inProgress
-            if (isInProgress) ...[
+            // Action Button: Complete Job if in progress and not completed
+            if (!isCompleted &&
+                (isInProgress ||
+                    effectiveJob.status == JobStatus.inProgress ||
+                    effectiveJob.status == JobStatus.started)) ...[
+              const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => _handleUnassignWorker(record),
+                onPressed: () => _handleCompleteJob(effectiveJob),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   side: const BorderSide(
@@ -562,8 +934,8 @@ class _SupervisorJobCardDetailsScreenState
                   backgroundColor: Colors.white,
                 ),
                 child: Text(
-                  'Unassign Worker',
-                  style: tsS13W600.copyWith(
+                  'Complete Job',
+                  style: tsS13W700.copyWith(
                     color: FactoryColors.primary,
                   ),
                 ),

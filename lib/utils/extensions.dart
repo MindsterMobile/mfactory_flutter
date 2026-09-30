@@ -114,11 +114,10 @@ extension FutureExtension<T> on Future<T> {
   Future<T> setProgress<I extends MixinProgressProvider>(I provider) async {
     try {
       provider.showLoading();
-      await this;
+      return await this;
     } finally {
       provider.hideLoading();
     }
-    return this;
   }
 
   /// Handles the error

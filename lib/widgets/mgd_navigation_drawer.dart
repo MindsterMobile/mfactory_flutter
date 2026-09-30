@@ -22,15 +22,15 @@ class MGDNavigationDrawer extends StatelessWidget {
   const MGDNavigationDrawer({
     super.key,
     required this.role,
-    this.userName = 'Asad Dev',
-    this.employeeId = 'Craftsman ID: MG3126',
+    this.userName = '',
+    this.employeeId = '',
     this.avatarUrl,
     this.onWorksAssignedTap,
     this.onReportsTap,
     this.onSettingsTap,
     this.onNotificationTap,
     this.onLogoutTap,
-    this.unreadNotificationsCount = 1,
+    this.unreadNotificationsCount = 0,
   });
 
   @override
@@ -111,7 +111,12 @@ class MGDNavigationDrawer extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(FactoryDimens.p16),
+            padding: EdgeInsets.only(
+              left: FactoryDimens.p16,
+              right: FactoryDimens.p16,
+              top: FactoryDimens.p16,
+              bottom: MediaQuery.of(context).padding.bottom + FactoryDimens.p16,
+            ),
             child: Text(
               'JewelCraft ERP v1.0.0',
               textAlign: TextAlign.center,
@@ -162,19 +167,21 @@ class MGDNavigationDrawer extends StatelessWidget {
               ],
             ),
             child: ClipOval(
-              child: Image.asset(
-                'assets/images/worker_avatar.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    _buildAvatarFallback(),
-              ),
+              child: (avatarUrl != null && avatarUrl!.trim().isNotEmpty)
+                  ? Image.network(
+                      avatarUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          _buildAvatarFallback(),
+                    )
+                  : _buildAvatarFallback(),
             ),
           ),
           const SizedBox(height: FactoryDimens.p12),
           Text(
             userName.isNotEmpty
                 ? userName
-                : (role == UserRole.supervisor ? 'Supervisor UM001' : 'Asad Dev'),
+                : (role == UserRole.supervisor ? 'Supervisor' : 'Worker'),
             style: FactoryTypography.titleMedium.copyWith(
               color: FactoryColors.textPrimary,
               fontWeight: FontWeight.w700,
@@ -185,8 +192,8 @@ class MGDNavigationDrawer extends StatelessWidget {
             employeeId.isNotEmpty
                 ? employeeId
                 : (role == UserRole.supervisor
-                    ? 'Cluster Head: UM001'
-                    : 'Craftsman ID: MG3126'),
+                    ? 'Supervisor'
+                    : 'Craftsman'),
             style: FactoryTypography.bodySmall.copyWith(
               color: FactoryColors.textSecondary,
             ),

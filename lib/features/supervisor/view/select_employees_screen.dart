@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../models/employee_model.dart';
 import '../../../models/job_card_model.dart';
+import '../../../utils/app_build_methods.dart';
 import '../../../utils/colors.dart';
 import '../../../utils/styles.dart';
 import '../view_model/supervisor_dashboard_view_model.dart';
@@ -25,7 +26,7 @@ class SelectEmployeesScreen extends StatefulWidget {
 
   const SelectEmployeesScreen({
     super.key,
-    this.jobCardId = '112-HGJCID-000274461',
+    this.jobCardId = '',
   });
 
   @override
@@ -41,21 +42,17 @@ class _SelectEmployeesScreenState extends State<SelectEmployeesScreen> {
   void _showConfirmAssignmentDialog(
     BuildContext context,
     SupervisorDashboardViewModel vm,
-  ) {
+  ) async {
     final selectedEmployees = vm.selectedEmployeesList;
     if (selectedEmployees.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select at least one employee.'),
-          duration: Duration(seconds: 1),
-        ),
-      );
+      showToast('Please select an employee.');
       return;
     }
 
-    showModalBottomSheet(
+    final res = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -63,20 +60,34 @@ class _SelectEmployeesScreenState extends State<SelectEmployeesScreen> {
       builder: (sheetCtx) => ConfirmAssignmentBottomSheet(
         jobCardId: widget.jobCardId,
         employees: selectedEmployees,
-        onCancel: () => Navigator.of(sheetCtx).pop(),
-        onSubmit: () {
-          Navigator.of(sheetCtx).pop();
-          vm.assignEmployeesToJob(widget.jobCardId, selectedEmployees);
-          _showSuccessDialog(context);
+        onCancel: () => Navigator.of(sheetCtx).pop(false),
+        onSubmit: () async {
+          final success = await vm.assignEmployeesToJob(widget.jobCardId, selectedEmployees);
+          if (success) {
+            final apiMsg = vm.lastSuccessMessage;
+            if (apiMsg != null && apiMsg.isNotEmpty) {
+              showToast(apiMsg);
+            }
+            return true;
+          } else {
+            final errMsg = vm.errorMessage ?? 'Failed to assign employee';
+            showToast(errMsg);
+            return false;
+          }
         },
       ),
     );
+
+    if (res == true && context.mounted) {
+      _showSuccessDialog(context);
+    }
   }
 
   void _showSuccessDialog(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -94,7 +105,13 @@ class _SelectEmployeesScreenState extends State<SelectEmployeesScreen> {
   void _showEmployeeDetails(EmployeeModel emp, SupervisorDashboardViewModel vm) {
     JobCardModel? matchingJob;
     try {
-      matchingJob = vm.jobCards.firstWhere((j) => j.id == widget.jobCardId);
+      matchingJob = vm.pendingJobCards.cast<JobCardModel?>().firstWhere(
+            (j) => j?.id == widget.jobCardId,
+            orElse: () => vm.jobCards.cast<JobCardModel?>().firstWhere(
+                  (j) => j?.id == widget.jobCardId,
+                  orElse: () => null,
+                ),
+          );
     } catch (_) {
       matchingJob = null;
     }
@@ -114,7 +131,7 @@ class _SelectEmployeesScreenState extends State<SelectEmployeesScreen> {
   Widget build(BuildContext context) {
     return Consumer<SupervisorDashboardViewModel>(
       builder: (context, vm, child) {
-        final allSelected = vm.selectedEmployeeIds.length == vm.employees.length;
+        final hasSelection = vm.selectedEmployeeIds.isNotEmpty;
 
         return Scaffold(
           backgroundColor: FactoryColors.background,
@@ -135,21 +152,22 @@ class _SelectEmployeesScreenState extends State<SelectEmployeesScreen> {
               onPressed: () => Navigator.of(context).pop(),
             ),
             title: Text(
-              'Select Employees',
+              'Select Employee',
               style: tsS17W700.copyWith(
                 color: FactoryColors.textPrimary,
               ),
             ),
             actions: [
-              TextButton(
-                onPressed: vm.selectAllEmployees,
-                child: Text(
-                  allSelected ? 'Clear All' : 'Select All',
-                  style: tsS13W600.copyWith(
-                    color: FactoryColors.primary,
+              if (hasSelection)
+                TextButton(
+                  onPressed: vm.clearEmployeeSelection,
+                  child: Text(
+                    'Clear',
+                    style: tsS13W600.copyWith(
+                      color: FactoryColors.primary,
+                    ),
                   ),
                 ),
-              ),
               const SizedBox(width: 8),
             ],
             bottom: PreferredSize(
@@ -192,18 +210,18 @@ class _SelectEmployeesScreenState extends State<SelectEmployeesScreen> {
                     padding: const EdgeInsets.all(14),
                     child: Column(
                       children: [
-                        // Top row: Checkbox, Name, ID
+                        // Top row: Radio indicator, Name, ID
                         Row(
                           children: [
-                            // Custom check square
+                            // Custom radio selection circle
                             Container(
                               width: 22,
                               height: 22,
                               decoration: BoxDecoration(
+                                shape: BoxShape.circle,
                                 color: isSelected
                                     ? FactoryColors.primary
                                     : Colors.white,
-                                borderRadius: BorderRadius.circular(5),
                                 border: Border.all(
                                   color: isSelected
                                       ? FactoryColors.primary
@@ -214,7 +232,7 @@ class _SelectEmployeesScreenState extends State<SelectEmployeesScreen> {
                               child: isSelected
                                   ? const Icon(
                                       Icons.check_rounded,
-                                      size: 16,
+                                      size: 14,
                                       color: Colors.white,
                                     )
                                   : null,
@@ -319,9 +337,13 @@ class _SelectEmployeesScreenState extends State<SelectEmployeesScreen> {
               ),
             ),
             child: ElevatedButton(
-              onPressed: () => _showConfirmAssignmentDialog(context, vm),
+              onPressed: vm.selectedEmployeeIds.isEmpty
+                  ? null
+                  : () => _showConfirmAssignmentDialog(context, vm),
               style: ElevatedButton.styleFrom(
                 backgroundColor: FactoryColors.primary,
+                disabledBackgroundColor:
+                    FactoryColors.primary.withValues(alpha: 0.5),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -329,7 +351,7 @@ class _SelectEmployeesScreenState extends State<SelectEmployeesScreen> {
                 ),
               ),
               child: Text(
-                'Assign Employees (${vm.selectedEmployeeIds.length})',
+                'Assign Employee',
                 style: tsS15W700.copyWith(
                   color: Colors.white,
                 ),

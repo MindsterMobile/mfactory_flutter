@@ -18,6 +18,7 @@ class AppColors {
   Color get color4177CA => const Color(0xFF4177CA);
   Color get colorF0F0F0 => const Color(0xFFF0F0F0);
   Color get colorA3A3A3 => const Color(0xFFA3A3A3);
+  Color get colorE04444 => const Color(0xFFE04444);
   Color get colorF2F2F2 => const Color(0xFFF2F2F2);
   Color get color3C3F4E => const Color(0xFF3C3F4E);
   Color get colorF6F5F8 => const Color(0xFFF6F5F8);

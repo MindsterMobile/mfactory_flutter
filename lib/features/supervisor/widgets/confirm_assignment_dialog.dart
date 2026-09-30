@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/employee_model.dart';
+import '../../../services/api_service.dart';
+import '../../../utils/app_build_methods.dart';
 import '../../../utils/colors.dart';
 import '../../../utils/styles.dart';
 
 /// Modal bottom sheet matching Figma and device screenshot: "Confirm Assignment"
-class ConfirmAssignmentBottomSheet extends StatelessWidget {
+class ConfirmAssignmentBottomSheet extends StatefulWidget {
   final String jobCardId;
   final List<EmployeeModel> employees;
   final VoidCallback onCancel;
-  final VoidCallback onSubmit;
+  final dynamic Function() onSubmit;
 
   const ConfirmAssignmentBottomSheet({
     super.key,
@@ -25,11 +27,12 @@ class ConfirmAssignmentBottomSheet extends StatelessWidget {
     required String jobCardId,
     required List<EmployeeModel> employees,
     required VoidCallback onCancel,
-    required VoidCallback onSubmit,
+    required dynamic Function() onSubmit,
   }) {
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -44,6 +47,15 @@ class ConfirmAssignmentBottomSheet extends StatelessWidget {
   }
 
   @override
+  State<ConfirmAssignmentBottomSheet> createState() =>
+      _ConfirmAssignmentBottomSheetState();
+}
+
+class _ConfirmAssignmentBottomSheetState
+    extends State<ConfirmAssignmentBottomSheet> {
+  bool _isSubmitting = false;
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
@@ -54,7 +66,9 @@ class ConfirmAssignmentBottomSheet extends StatelessWidget {
         left: 20,
         right: 20,
         top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+            MediaQuery.of(context).padding.bottom +
+            24,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -71,7 +85,7 @@ class ConfirmAssignmentBottomSheet extends StatelessWidget {
                 ),
               ),
               InkWell(
-                onTap: onCancel,
+                onTap: widget.onCancel,
                 borderRadius: BorderRadius.circular(20),
                 child: const Padding(
                   padding: EdgeInsets.all(4),
@@ -103,7 +117,7 @@ class ConfirmAssignmentBottomSheet extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  jobCardId,
+                  widget.jobCardId,
                   style: tsS14W700.copyWith(
                     color: FactoryColors.textPrimary,
                   ),
@@ -124,14 +138,16 @@ class ConfirmAssignmentBottomSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'You are about to assign the following employees to $jobCardId',
+                  widget.employees.length > 1
+                      ? 'You are about to assign the following employees to ${widget.jobCardId}'
+                      : 'You are about to assign the following employee to ${widget.jobCardId}',
                   style: tsS13W500.copyWith(
                     height: 1.4,
                     color: FactoryColors.textSlate,
                   ),
                 ),
                 const SizedBox(height: 14),
-                ...employees.asMap().entries.map((entry) {
+                ...widget.employees.asMap().entries.map((entry) {
                   final index = entry.key + 1;
                   final emp = entry.value;
                   return Padding(
@@ -184,7 +200,7 @@ class ConfirmAssignmentBottomSheet extends StatelessWidget {
                 child: SizedBox(
                   height: 48,
                   child: OutlinedButton(
-                    onPressed: onCancel,
+                    onPressed: widget.onCancel,
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(
                         color: FactoryColors.borderCheckbox,
@@ -209,20 +225,53 @@ class ConfirmAssignmentBottomSheet extends StatelessWidget {
                 child: SizedBox(
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: onSubmit,
+                    onPressed: _isSubmitting
+                        ? null
+                        : () async {
+                            setState(() => _isSubmitting = true);
+                            try {
+                              final result = await widget.onSubmit();
+                              if (result == false) {
+                                if (mounted) {
+                                  setState(() => _isSubmitting = false);
+                                }
+                                return;
+                              }
+                              if (mounted) {
+                                Navigator.of(context).pop(true);
+                              }
+                            } catch (e) {
+                              showToast(ApiService.extractErrorMessage(e));
+                              if (mounted) {
+                                setState(() => _isSubmitting = false);
+                              }
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: FactoryColors.primary,
+                      disabledBackgroundColor:
+                          FactoryColors.primary.withValues(alpha: 0.6),
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: Text(
-                      'Submit',
-                      style: tsS15W700.copyWith(
-                        color: Colors.white,
-                      ),
-                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            'Submit',
+                            style: tsS15W700.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                 ),
               ),

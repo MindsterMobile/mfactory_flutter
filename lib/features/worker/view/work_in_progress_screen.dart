@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../../utils/app_build_methods.dart';
 import '../../../utils/colors.dart';
 import '../view_model/worker_dashboard_view_model.dart';
 import 'job_details_screen.dart';
@@ -22,6 +24,12 @@ class WorkInProgressScreen extends StatelessWidget {
           appBar: AppBar(
             backgroundColor: Colors.white,
             elevation: 0,
+            scrolledUnderElevation: 0,
+            systemOverlayStyle: const SystemUiOverlayStyle(
+              statusBarColor: Colors.white,
+              statusBarIconBrightness: Brightness.dark,
+              statusBarBrightness: Brightness.light,
+            ),
             leading: IconButton(
               icon: const Icon(
                 Icons.arrow_back_rounded,
@@ -61,14 +69,21 @@ class WorkInProgressScreen extends StatelessWidget {
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    top: 16,
+                    bottom: MediaQuery.of(context).padding.bottom + 16,
+                  ),
                   itemCount: jobs.length,
                   separatorBuilder: (context, index) =>
                       const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final job = jobs[index];
                     final timerDisplay =
-                        index == 0 ? '00:35:10' : '00:02:25';
+                        (job.timeSpentText != null && job.timeSpentText!.trim().isNotEmpty)
+                            ? job.timeSpentText!
+                            : '00:00:00';
 
                     return InkWell(
                       onTap: () {
@@ -122,14 +137,12 @@ class WorkInProgressScreen extends StatelessWidget {
                             ),
                             // Red Circular Pause Action Button
                             GestureDetector(
-                              onTap: () {
-                                vm.pauseJob(job.id);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Paused Job: ${job.id}'),
-                                    duration: const Duration(seconds: 1),
-                                  ),
-                                );
+                              onTap: () async {
+                                await vm.pauseJob(job.id);
+                                final apiMsg = vm.lastSuccessMessage;
+                                showToast(apiMsg != null && apiMsg.isNotEmpty
+                                    ? apiMsg
+                                    : 'Paused Job: ${job.id}');
                               },
                               child: Container(
                                 width: 38,
@@ -161,12 +174,10 @@ class WorkInProgressScreen extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () {
                   vm.stopAllJobs();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('All running jobs have been paused.'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                  final apiMsg = vm.lastSuccessMessage;
+                  showToast(apiMsg != null && apiMsg.isNotEmpty
+                      ? apiMsg
+                      : 'All running jobs have been paused.');
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: FactoryColors.buttonRed,

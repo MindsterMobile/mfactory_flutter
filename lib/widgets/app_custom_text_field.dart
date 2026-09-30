@@ -178,7 +178,14 @@ class CustomTextField extends StatelessWidget {
                 ),
               ),
             ),
-            if (state.hasError) const Text("erro")
+            if (state.hasError && state.errorText != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 4),
+                child: Text(
+                  state.errorText!,
+                  style: tsS12W400.copyWith(color: AppColors().colorE04444),
+                ),
+              ),
           ],
         );
       }),

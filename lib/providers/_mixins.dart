@@ -139,7 +139,7 @@ mixin MixinAPIProvider {
       case EnumAPIExceptions.emptyTokenFromServer:
         onShowError(AppError(
             message:
-                "Unable to recieve the token from server. Please try after sometime",
+                "Unable to receive the token from server. Please try again later.",
             response: ex));
         break;
       case EnumAPIExceptions.invalidResultType:

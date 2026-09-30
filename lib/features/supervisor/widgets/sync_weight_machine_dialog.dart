@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/api_service.dart';
+import '../../../utils/app_build_methods.dart';
 import '../../../utils/colors.dart';
 import '../../../utils/styles.dart';
 
@@ -8,7 +10,7 @@ class SyncWeightMachineBottomSheet extends StatefulWidget {
   final String jobCardId;
   final double initialWeight;
   final String buttonTitle;
-  final Function(double) onSubmit;
+  final dynamic Function(double) onSubmit;
 
   const SyncWeightMachineBottomSheet({
     super.key,
@@ -24,11 +26,12 @@ class SyncWeightMachineBottomSheet extends StatefulWidget {
     required String jobCardId,
     double initialWeight = 0.0,
     String buttonTitle = 'Submit and Complete',
-    required Function(double) onSubmit,
+    required dynamic Function(double) onSubmit,
   }) {
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -50,7 +53,8 @@ class SyncWeightMachineBottomSheet extends StatefulWidget {
 class _SyncWeightMachineBottomSheetState
     extends State<SyncWeightMachineBottomSheet> {
   late TextEditingController _weightController;
-  bool _isSyncing = false;
+  bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -68,23 +72,6 @@ class _SyncWeightMachineBottomSheetState
     super.dispose();
   }
 
-  void _simulateMachineSync() async {
-    setState(() => _isSyncing = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() {
-        _isSyncing = false;
-        _weightController.text = '30.00';
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Weight synced from Machine: 30.00 gm'),
-          duration: Duration(seconds: 1),
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -96,7 +83,9 @@ class _SyncWeightMachineBottomSheetState
         left: 20,
         right: 20,
         top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+            MediaQuery.of(context).padding.bottom +
+            24,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -107,7 +96,7 @@ class _SyncWeightMachineBottomSheetState
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Enter Weight from Machine',
+                'Enter Weight',
                 style: tsS18W700.copyWith(
                   color: FactoryColors.textPrimary,
                 ),
@@ -130,7 +119,7 @@ class _SyncWeightMachineBottomSheetState
 
           // Subtitle
           Text(
-            'Type the weight or sync directly from the machine',
+            'Type the weight to proceed',
             style: tsS12W400.copyWith(
               color: FactoryColors.textSecondary,
             ),
@@ -177,82 +166,87 @@ class _SyncWeightMachineBottomSheetState
               ),
             ),
           ),
-          const SizedBox(height: 16),
-
-          // "or" Divider
-          Row(
-            children: [
-              const Expanded(child: Divider(color: FactoryColors.border)),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text(
-                  'or',
-                  style: tsS12W400.copyWith(
-                    color: FactoryColors.textMuted,
-                  ),
-                ),
-              ),
-              const Expanded(child: Divider(color: FactoryColors.border)),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Sync from machine button
-          OutlinedButton.icon(
-            onPressed: _isSyncing ? null : _simulateMachineSync,
-            icon: _isSyncing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: FactoryColors.primary,
-                    ),
-                  )
-                : const Icon(
-                    Icons.sync_rounded,
-                    size: 18,
-                    color: FactoryColors.primary,
-                  ),
-            label: Text(
-              _isSyncing ? 'Syncing...' : 'Sync from machine',
-              style: tsS13W600.copyWith(
-                color: FactoryColors.primary,
-              ),
-            ),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              side: const BorderSide(color: FactoryColors.primary, width: 1.2),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              backgroundColor: Colors.white,
-            ),
-          ),
           const SizedBox(height: 20),
 
-          // Submit and Complete button
+          // Inline error message if any
+          if (_errorMessage != null && _errorMessage!.isNotEmpty) ...[
+            Text(
+              _errorMessage!,
+              style: tsS12W400.copyWith(color: FactoryColors.buttonRed),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Submit button
           SizedBox(
             height: 48,
             child: ElevatedButton(
-              onPressed: () {
-                final val = double.tryParse(_weightController.text) ?? 30.0;
-                Navigator.of(context).pop();
-                widget.onSubmit(val);
-              },
+              onPressed: _isLoading
+                  ? null
+                  : () async {
+                      final text = _weightController.text.trim();
+                      final val = double.tryParse(text);
+                      if (val == null || val <= 0) {
+                        setState(() {
+                          _errorMessage = 'Please enter a valid weight';
+                        });
+                        return;
+                      }
+
+                      setState(() {
+                        _isLoading = true;
+                        _errorMessage = null;
+                      });
+
+                      try {
+                        final result = await widget.onSubmit(val);
+                        // If onSubmit returns false, it indicates failure
+                        if (result == false) {
+                          if (mounted) {
+                            setState(() => _isLoading = false);
+                          }
+                          return;
+                        }
+                        // Only close sheet when API succeeds!
+                        if (mounted) {
+                          Navigator.of(context).pop(val);
+                        }
+                      } catch (e) {
+                        final errorStr = ApiService.extractErrorMessage(e);
+                        if (mounted) {
+                          setState(() {
+                            _isLoading = false;
+                            _errorMessage = errorStr;
+                          });
+                          showToast(errorStr);
+                        }
+                      }
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: FactoryColors.primary,
+                disabledBackgroundColor:
+                    FactoryColors.primary.withValues(alpha: 0.6),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              child: Text(
-                widget.buttonTitle,
-                style: tsS15W700.copyWith(
-                  color: Colors.white,
-                ),
-              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(
+                      widget.buttonTitle,
+                      style: tsS15W700.copyWith(
+                        color: Colors.white,
+                      ),
+                    ),
             ),
           ),
         ],

@@ -59,13 +59,14 @@ showToast(String msg,
     Color? backgroundColor,
     Color? textColor,
     double? fontSize}) {
+  if (msg.trim().isEmpty) return;
   Fluttertoast.showToast(
     msg: msg,
-    toastLength: Toast.LENGTH_SHORT,
-    gravity: gravity,
-    backgroundColor: backgroundColor,
-    textColor: textColor,
-    fontSize: fontSize,
+    toastLength: Toast.LENGTH_LONG,
+    gravity: gravity ?? ToastGravity.BOTTOM,
+    backgroundColor: backgroundColor ?? const Color(0xE6212121),
+    textColor: textColor ?? Colors.white,
+    fontSize: fontSize ?? 14.0,
   );
 }
 

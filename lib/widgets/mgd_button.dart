@@ -54,8 +54,8 @@ class MGDButton extends StatelessWidget {
         border = Border.all(color: FactoryColors.border, width: 1.2);
         break;
       case MGDButtonVariant.danger:
-        bg = FactoryColors.statusOnHoldBg;
-        fg = FactoryColors.statusOnHoldText;
+        bg = FactoryColors.statusPendingBg;
+        fg = FactoryColors.statusPendingText;
         break;
     }
 

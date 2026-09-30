@@ -1,30 +1,30 @@
-import 'package:shared_preferences/shared_preferences.dart';
-// import '../../../models/api_response_models.dart';
+import 'package:flutter/foundation.dart';
+
+import '../../../models/api_response_models.dart';
 import '../../../models/user_role.dart';
 import '../../../providers/view_model.dart';
-// import '../../../services/api_service.dart';
-import '../../../utils/sp_keys.dart' as sp_keys;
+import '../../../repositories/auth_repository.dart';
+import '../../../services/api_service.dart';
+import '../../../utils/app_build_methods.dart';
+import '../../../utils/extensions.dart';
 
 class LoginViewModel extends ViewModel {
+  final AuthRepository _authRepository;
+
   UserRole _selectedRole = UserRole.supervisor;
   bool _obscurePassword = true;
-  bool _rememberMe = true;
-  String? _selectedBranch = 'Kozhikode Factory Unit';
   String? _errorMessage;
+  List<FactoryLocationData> _factories = [];
+
+  LoginViewModel({AuthRepository? authRepository})
+      : _authRepository = authRepository ?? AuthRepositoryImpl();
 
   // Getters
   UserRole get selectedRole => _selectedRole;
   bool get obscurePassword => _obscurePassword;
-  bool get rememberMe => _rememberMe;
-  String? get selectedBranch => _selectedBranch;
   String? get errorMessage => _errorMessage;
-
-  final List<String> availableBranches = const [
-    'Kozhikode Factory Unit',
-    'Mumbai SEZ Unit',
-    'Sharjah Production Facility',
-    'Bangalore Jewellery Works',
-  ];
+  List<FactoryLocationData> get factories => _factories;
+  bool get hasFactories => _factories.isNotEmpty;
 
   void setSelectedRole(UserRole role) {
     if (_selectedRole == role) return;
@@ -37,19 +37,7 @@ class LoginViewModel extends ViewModel {
     notifyListeners();
   }
 
-  void setRememberMe(bool value) {
-    _rememberMe = value;
-    notifyListeners();
-  }
-
-  void setSelectedBranch(String? branch) {
-    if (branch != null) {
-      _selectedBranch = branch;
-      notifyListeners();
-    }
-  }
-
-  /// Live API Login with POST /api/v1/auth/login
+  /// Live API Login with AuthRepository
   Future<bool> login({
     required String employeeId,
     required String password,
@@ -58,6 +46,7 @@ class LoginViewModel extends ViewModel {
     final trimmedPass = password.trim();
 
     if (trimmedUser.isEmpty || trimmedPass.isEmpty) {
+      showToast('Please enter employee ID and password');
       _errorMessage = 'Please enter employee ID and password';
       notifyListeners();
       return false;
@@ -65,54 +54,36 @@ class LoginViewModel extends ViewModel {
 
     try {
       _errorMessage = null;
-      showLoading();
 
-      // UI simulation as per Figma
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // For the time being UI demo (as API not done): Always login to Supervisor
-      _selectedRole = UserRole.supervisor;
-
-      /*
-      // ================= LIVE API INTEGRATION (COMMENTED OUT) =================
-      final TokenResponseData tokenData = await ApiService.instance.login(
-        username: trimmedUser,
-        password: trimmedPass,
-      );
-
-      // Save user session into SharedPreferences
-      final sp = await SharedPreferences.getInstance();
-      await sp.setString(sp_keys.keyToken, tokenData.accessToken);
-      await sp.setString(sp_keys.keyUserName, tokenData.name);
-      await sp.setString(sp_keys.keyUserId, tokenData.userId.toString());
-      await sp.setString(sp_keys.keyEmployeeCode, tokenData.employeeCode);
-      await sp.setString(sp_keys.keyRoleId, tokenData.role.toString());
+      final TokenResponseData tokenData = await _authRepository
+          .login(
+            username: trimmedUser,
+            password: trimmedPass,
+          )
+          .setProgress(this);
 
       if (tokenData.role == 1) {
         _selectedRole = UserRole.worker;
-        await sp.setString(sp_keys.keyRole, 'worker');
       } else {
         _selectedRole = UserRole.supervisor;
-        await sp.setString(sp_keys.keyRole, 'supervisor');
       }
-      // ========================================================================
-      */
 
-      // Save mock session for UI consistency
-      final sp = await SharedPreferences.getInstance();
-      await sp.setString(sp_keys.keyUserName, 'Supervisor UM001');
-      await sp.setString(sp_keys.keyUserId, trimmedUser.isNotEmpty ? trimmedUser : 'UM001');
-      await sp.setString(sp_keys.keyEmployeeCode, trimmedUser.isNotEmpty ? trimmedUser : 'UM001');
-      await sp.setString(sp_keys.keyRole, 'supervisor');
+      // Check if factory locations exist for tenant
+      try {
+        _factories = await _authRepository.getFactories().setProgress(this);
+      } catch (e) {
+        debugPrint('Error fetching factories during login: $e');
+        _factories = [];
+      }
 
       notifyListeners();
       return true;
     } catch (e) {
-      _errorMessage = e.toString().replaceAll('Exception:', '').trim();
+      final msg = ApiService.extractErrorMessage(e);
+      showToast(msg);
+      _errorMessage = msg;
       notifyListeners();
       return false;
-    } finally {
-      hideLoading();
     }
   }
 
@@ -123,3 +94,4 @@ class LoginViewModel extends ViewModel {
   }) =>
       login(employeeId: employeeId, password: password);
 }
+

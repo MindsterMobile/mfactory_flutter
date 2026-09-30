@@ -29,7 +29,12 @@ class EmployeeModel {
     final rawId = json['id'];
     final dbId = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
     final empCode = json['employee_code']?.toString() ?? '';
-    final hasActive = json['has_active_job'] == true;
+    final hasActive = json['has_active_job'] == true ||
+        json['has_active_job'] == 1 ||
+        json['has_active_job']?.toString().toLowerCase() == 'true';
+    final activeJobIdVal = json['active_job_id'] ??
+        (json['active_job'] is Map ? json['active_job']['id'] : null) ??
+        json['running_job_id'];
 
     return EmployeeModel(
       dbId: dbId,
@@ -43,7 +48,7 @@ class EmployeeModel {
       department: '',
       isAvailable: !hasActive,
       hasActiveJob: hasActive,
-      activeJobId: json['active_job_id']?.toString(),
+      activeJobId: activeJobIdVal?.toString(),
     );
   }
 
@@ -58,6 +63,7 @@ class EmployeeModel {
     bool? isAvailable,
     bool? hasActiveJob,
     String? activeJobId,
+    bool clearActiveJob = false,
   }) {
     return EmployeeModel(
       dbId: dbId ?? this.dbId,
@@ -68,8 +74,8 @@ class EmployeeModel {
       pendingJobsCount: pendingJobsCount ?? this.pendingJobsCount,
       department: department ?? this.department,
       isAvailable: isAvailable ?? this.isAvailable,
-      hasActiveJob: hasActiveJob ?? this.hasActiveJob,
-      activeJobId: activeJobId ?? this.activeJobId,
+      hasActiveJob: clearActiveJob ? false : (hasActiveJob ?? this.hasActiveJob),
+      activeJobId: clearActiveJob ? null : (activeJobId ?? this.activeJobId),
     );
   }
 }

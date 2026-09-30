@@ -24,6 +24,7 @@ class JobCompletedModal extends StatefulWidget {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => JobCompletedModal(
         job: job,
@@ -57,7 +58,9 @@ class _JobCompletedModalState extends State<JobCompletedModal> {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + FactoryDimens.p20,
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+            MediaQuery.of(context).padding.bottom +
+            FactoryDimens.p20,
         top: FactoryDimens.p16,
         left: FactoryDimens.p20,
         right: FactoryDimens.p20,
@@ -110,7 +113,7 @@ class _JobCompletedModalState extends State<JobCompletedModal> {
           ),
           const SizedBox(height: 2),
           Text(
-            widget.job.timeSpentText ?? '4 hrs 05 mins',
+            widget.job.timeSpentText ?? '-',
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -261,6 +264,7 @@ class JobCompletedSuccessDialog extends StatelessWidget {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

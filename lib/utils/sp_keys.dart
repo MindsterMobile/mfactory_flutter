@@ -9,4 +9,6 @@ const keyUserId = "KEY_USER_ID";
 const keyEmployeeCode = "KEY_EMPLOYEE_CODE";
 const keyRoleId = "KEY_ROLE_ID";
 const keyRole = "KEY_ROLE";
+const keyProfileImageUrl = "KEY_PROFILE_IMAGE_URL";
+const keySelectedLocation = "KEY_SELECTED_LOCATION";
 const keyLocalAuthStatus = "local_auth_status";

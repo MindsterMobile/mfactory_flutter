@@ -4,11 +4,17 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/job_card_model.dart';
+import '../../../models/job_status.dart';
 import '../../../models/user_role.dart';
+import '../../../utils/app_build_methods.dart';
 import '../../../utils/colors.dart';
 import '../../../utils/styles.dart';
+import '../../../widgets/app_progress_widget.dart';
 import '../../../widgets/mgd_navigation_drawer.dart';
-import '../../auth/view/choose_location_screen.dart';
+import '../../../widgets/status_badge.dart';
+import '../../../services/api_service.dart';
+import '../../notifications/view/notifications_screen.dart';
+import '../../auth/view/login_screen.dart';
 import '../../worker/view/worker_dashboard_screen.dart';
 import '../view_model/supervisor_dashboard_view_model.dart';
 import '../widgets/sync_weight_machine_dialog.dart';
@@ -35,7 +41,11 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<SupervisorDashboardViewModel>().loadDashboardData();
+      if (!mounted) return;
+      final vm = context.read<SupervisorDashboardViewModel>();
+      vm.setJobFilter(SupervisorTabFilter.toAssign);
+      vm.setBottomNavIndex(0);
+      vm.loadDashboardData();
     });
   }
 
@@ -43,7 +53,7 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
+        statusBarColor: FactoryColors.primary,
         statusBarIconBrightness: Brightness.light,
         statusBarBrightness: Brightness.dark,
       ),
@@ -53,28 +63,33 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
         drawer: Consumer<SupervisorDashboardViewModel>(
           builder: (context, vm, _) => MGDNavigationDrawer(
             role: UserRole.supervisor,
-            userName: vm.supervisorName.isNotEmpty ? vm.supervisorName : 'Supervisor UM001',
-            employeeId: 'Cluster Head: ${vm.supervisorCode.isNotEmpty ? vm.supervisorCode : "UM001"}',
-            onWorksAssignedTap: () {
-              Navigator.pop(context);
-            },
+            userName:
+                vm.supervisorName.isNotEmpty ? vm.supervisorName : 'Supervisor',
+            employeeId: vm.supervisorCode.isNotEmpty
+                ? 'Cluster Head: ${vm.supervisorCode}'
+                : '',
+            avatarUrl: vm.profileImageUrl,
+            onWorksAssignedTap: () {},
             onReportsTap: () {
-              Navigator.pop(context);
               Navigator.pushNamed(context, ReportsListScreen.routeName);
             },
             onSettingsTap: () {
-              Navigator.pop(context);
-              _showSnack('Settings');
+              // _showSnack('Settings');
             },
-            onNotificationTap: () {
+            onNotificationTap: () async {
               Navigator.pop(context);
-              _showSnack('Notifications');
+              await Navigator.pushNamed(context, NotificationsScreen.routeName);
+              if (context.mounted) {
+                vm.refreshNotifications();
+              }
             },
+            unreadNotificationsCount: vm.unreadNotificationsCount,
             onLogoutTap: () {
-              Navigator.pop(context);
-              Navigator.pushReplacementNamed(
+              vm.logout();
+              Navigator.pushNamedAndRemoveUntil(
                 context,
-                ChooseLocationScreen.routeName,
+                LoginScreen.routeName,
+                (route) => false,
               );
             },
           ),
@@ -85,77 +100,92 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
           scrolledUnderElevation: 0,
           automaticallyImplyLeading: false,
           systemOverlayStyle: const SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
+            statusBarColor: FactoryColors.primary,
             statusBarIconBrightness: Brightness.light,
             statusBarBrightness: Brightness.dark,
           ),
           titleSpacing: 14,
           title: Consumer<SupervisorDashboardViewModel>(
-            builder: (context, vm, child) => _buildTopHeaderContent(context, vm),
+            builder: (context, vm, child) =>
+                _buildTopHeaderContent(context, vm),
           ),
         ),
-      body: Consumer<SupervisorDashboardViewModel>(
-        builder: (context, vm, child) {
-          return RefreshIndicator(
-            color: FactoryColors.primary,
-            onRefresh: vm.refreshDashboard,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              slivers: [
+        body: Consumer<SupervisorDashboardViewModel>(
+          builder: (context, vm, child) {
+            return Stack(
+              children: [
+                RefreshIndicator(
+                  color: FactoryColors.primary,
+                  onRefresh: vm.refreshDashboard,
+                  child: CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    slivers: [
+                      // 2. Main content based on bottom navigation
+                      if (vm.bottomNavIndex == 0) ...[
+                        // Dashboard View
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                          sliver: SliverList(
+                            delegate: SliverChildListDelegate([
+                              // Total Job Cards (05)
+                              _buildTotalJobCardsCard(vm),
+                              const SizedBox(height: 12),
 
-                // 2. Main content based on bottom navigation
-                if (vm.bottomNavIndex == 0) ...[
-                  // Dashboard View
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
-                        // Total Job Cards (05)
-                        _buildTotalJobCardsCard(vm),
-                        const SizedBox(height: 12),
+                              // 2x2 Status Metrics Matrix
+                              _buildStatusMatrix(vm),
+                              const SizedBox(height: 18),
 
-                        // 2x2 Status Metrics Matrix
-                        _buildStatusMatrix(vm),
-                        const SizedBox(height: 18),
+                              // Section Header: Pending Job Card to Assign + View All
+                              _buildSectionHeader(vm),
+                              const SizedBox(height: 10),
+                            ]),
+                          ),
+                        ),
 
-                        // Section Header: Pending Job Card to Assign + View All
-                        _buildSectionHeader(vm),
-                        const SizedBox(height: 10),
-                      ]),
+                        // List of Pending Job Cards
+                        _buildPendingJobList(context, vm),
+                      ] else if (vm.bottomNavIndex == 1) ...[
+                        // Job Cards View (Matching exact user screenshot)
+                        SliverToBoxAdapter(
+                          child: _buildJobCardsTabHeader(vm),
+                        ),
+                        _buildAllJobCardsList(context, vm),
+                      ] else ...[
+                        // Worker Details View
+                        _buildWorkerDetailsView(context, vm),
+                      ],
+
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: 40),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Centered circular progress indicator for API calls
+                if (vm.isLoading)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      alignment: Alignment.center,
+                      child: const AppProgressWidget(),
                     ),
                   ),
-
-                  // List of Pending Job Cards
-                  _buildPendingJobList(context, vm),
-                ] else if (vm.bottomNavIndex == 1) ...[
-                  // Job Cards View (Matching exact user screenshot)
-                  SliverToBoxAdapter(
-                    child: _buildJobCardsTabHeader(vm),
-                  ),
-                  _buildAllJobCardsList(context, vm),
-                ] else ...[
-                  // Worker Details View
-                  _buildWorkerDetailsView(context, vm),
-                ],
-
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 40),
-                ),
               ],
-            ),
-          );
-        },
+            );
+          },
+        ),
+        bottomNavigationBar: Consumer<SupervisorDashboardViewModel>(
+          builder: (context, vm, child) {
+            return _buildBottomNavigationBar(context, vm);
+          },
+        ),
       ),
-      bottomNavigationBar: Consumer<SupervisorDashboardViewModel>(
-        builder: (context, vm, child) {
-          return _buildBottomNavigationBar(context, vm);
-        },
-      ),
-    ),
-  );
-}
+    );
+  }
 
   /// 1. Top Deep Magenta App Bar content
   Widget _buildTopHeaderContent(
@@ -165,155 +195,121 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-          // Left: Menu Hamburger + Unit Selector (UM001 v) on Dashboard, or Title on tabs
-          if (vm.bottomNavIndex == 1)
-            Text(
-              'Job Card',
-              style: tsS20W700.copyWith(color: FactoryColors.textOnPrimary),
-            )
-          else if (vm.bottomNavIndex == 2)
-            Text(
-              'Worker Details',
-              style: tsS20W700.copyWith(color: FactoryColors.textOnPrimary),
-            )
-          else
-            Flexible(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.menu_rounded,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: PopupMenuButton<String>(
-                      color: Colors.white,
-                      surfaceTintColor: Colors.transparent,
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      onSelected: (val) => vm.setUnit(val),
-                      itemBuilder: (ctx) => vm.availableUnits
-                          .map(
-                            (u) => PopupMenuItem<String>(
-                              value: u,
-                              child: Text(
-                                u,
-                                style: (u == vm.selectedUnit ? tsS14W700 : tsS14W500)
-                                    .copyWith(
-                                  color: u == vm.selectedUnit
-                                      ? FactoryColors.primary
-                                      : FactoryColors.textPrimary,
-                                ),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              '${vm.selectedUnit}...',
-                              style: tsS16W600.copyWith(color: FactoryColors.textOnPrimary),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // Right: [My Jobs] Tab Switcher + Notification Bell
+        // Left: Menu Hamburger + Title
+        if (vm.bottomNavIndex == 1)
+          Text(
+            'Job Card',
+            style: tsS20W700.copyWith(color: FactoryColors.textOnPrimary),
+          )
+        else if (vm.bottomNavIndex == 2)
+          Text(
+            'Worker Details',
+            style: tsS20W700.copyWith(color: FactoryColors.textOnPrimary),
+          )
+        else
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // [My Jobs] Tab - switches to existing Worker flow!
-              InkWell(
-                onTap: () {
-                  // Switch to existing Worker Flow
-                  Navigator.pushNamed(
-                    context,
-                    WorkerDashboardScreen.routeName,
-                  );
-                },
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.75),
-                      width: 1.2,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SvgPicture.asset(
-                        'assets/svgs/ic_briefcase.svg',
-                        width: 16,
-                        height: 16,
-                        colorFilter: const ColorFilter.mode(
-                          FactoryColors.textOnPrimary,
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'My Jobs',
-                        style: tsS12W700.copyWith(
-                          color: FactoryColors.textOnPrimary,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
+              IconButton(
+                icon: const Icon(
+                  Icons.menu_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Dashboard',
+                style: tsS20W700.copyWith(color: FactoryColors.textOnPrimary),
+              ),
+            ],
+          ),
+
+        // Right: [My Jobs] Tab Switcher + Notification Bell
+        Row(
+          children: [
+            // [My Jobs] Tab - switches to existing Worker flow!
+            InkWell(
+              onTap: () {
+                // Switch to existing Worker Flow
+                Navigator.pushNamed(
+                  context,
+                  WorkerDashboardScreen.routeName,
+                  arguments: {'isSupervisor': true},
+                );
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.75),
+                    width: 1.2,
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-
-              // Notification Bell with Badge
-              Stack(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.12),
-                    ),
-                    child: IconButton(
-                      icon: SvgPicture.asset(
-                        'assets/svgs/ic_notification_bell.svg',
-                        width: 20,
-                        height: 20,
-                        colorFilter: const ColorFilter.mode(
-                          Colors.white,
-                          BlendMode.srcIn,
-                        ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SvgPicture.asset(
+                      'assets/svgs/ic_briefcase.svg',
+                      width: 16,
+                      height: 16,
+                      colorFilter: const ColorFilter.mode(
+                        FactoryColors.textOnPrimary,
+                        BlendMode.srcIn,
                       ),
-                      padding: EdgeInsets.zero,
-                      onPressed: () => _showSnack('Notifications'),
                     ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'My Jobs',
+                      style: tsS12W700.copyWith(
+                        color: FactoryColors.textOnPrimary,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // Notification Bell with Badge
+            Stack(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.12),
                   ),
+                  child: IconButton(
+                    icon: SvgPicture.asset(
+                      'assets/svgs/ic_notification_bell.svg',
+                      width: 20,
+                      height: 20,
+                      colorFilter: const ColorFilter.mode(
+                        Colors.white,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: () async {
+                      await Navigator.pushNamed(
+                          context, NotificationsScreen.routeName);
+                      if (context.mounted) {
+                        vm.refreshNotifications();
+                      }
+                    },
+                  ),
+                ),
+                if (vm.hasUnreadNotifications)
                   Positioned(
                     top: 6,
                     right: 6,
@@ -326,12 +322,12 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
                       ),
                     ),
                   ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      );
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   /// 2. Total Job Cards Banner Card (Total Job Cards 05)
@@ -540,7 +536,7 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
     );
   }
 
-  /// 4. Section Header: Pending Job Card to Assign + View All
+  /// 4. Section Header: Pending to Assign + View All
   Widget _buildSectionHeader(SupervisorDashboardViewModel vm) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -574,6 +570,38 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
     SupervisorDashboardViewModel vm,
   ) {
     final jobs = vm.pendingJobCards;
+    if (jobs.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: FactoryColors.border),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.assignment_turned_in_outlined,
+                    size: 40,
+                    color: FactoryColors.textMuted.withValues(alpha: 0.6),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'No pending job cards to assign',
+                    style: tsS14W600.copyWith(color: FactoryColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverList(
@@ -591,42 +619,60 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
     );
   }
 
-  /// Single Job Card Tile matching screenshot 1:1
+  /// Single Job Card Tile matching Figma 1:1
   Widget _buildJobCardItem(
     BuildContext context,
     SupervisorDashboardViewModel vm,
     JobCardModel job,
   ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: FactoryColors.border),
-        boxShadow: const [
-          BoxShadow(
-            color: FactoryColors.shadowColor,
-            blurRadius: 6,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => SupervisorJobCardDetailsScreen(jobCard: job),
+    final bool isReassigned =
+        job.isReassigned || job.status == JobStatus.reAssigned;
+
+      final canViewDetails = job.status == JobStatus.inProgress ||
+          job.status == JobStatus.started ||
+          job.status == JobStatus.completed;
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: FactoryColors.border),
+          boxShadow: const [
+            BoxShadow(
+              color: FactoryColors.shadowColor,
+              blurRadius: 6,
+              offset: Offset(0, 2),
             ),
-          );
-        },
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+          ],
+        ),
+        child: InkWell(
+          onTap: canViewDetails
+              ? () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          SupervisorJobCardDetailsScreen(jobCard: job),
+                    ),
+                  );
+                }
+              : null,
+          borderRadius: BorderRadius.circular(14),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top line: Job Card ID: 112-NGJCID-000274461
-              Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top line: Job Card ID (pink tinted header if Re-Assigned)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: isReassigned
+                    ? const Color(0xFFFFF0F0)
+                    : Colors.transparent,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(13)),
+              ),
+              child: Row(
                 children: [
                   Text(
                     'Job Card ID: ',
@@ -634,189 +680,434 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
                       color: FactoryColors.textSecondary,
                     ),
                   ),
-                  Text(
-                    job.id,
-                    style: tsS14W700.copyWith(
-                      color: FactoryColors.textPrimary,
+                  Expanded(
+                    child: Text(
+                      job.id,
+                      overflow: TextOverflow.ellipsis,
+                      style: tsS14W700.copyWith(
+                        color: FactoryColors.textPrimary,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Divider(height: 1, thickness: 1, color: FactoryColors.dividerLight),
-              ),
+            ),
+            const Divider(
+              height: 1,
+              thickness: 1,
+              color: FactoryColors.dividerLight,
+            ),
 
-              // Middle: Voucher ID on left + Dual ring thumbnails on right
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
+                  // Middle: Voucher ID on left + Dual ring thumbnails on right
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Voucher ID:',
-                        style: tsS13W400.copyWith(
-                          color: FactoryColors.textSecondary,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Voucher ID:',
+                            style: tsS13W400.copyWith(
+                              color: FactoryColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            job.voucherId,
+                            style: tsS15W700.copyWith(
+                              color: FactoryColors.textPrimary,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        job.voucherId,
-                        style: tsS15W700.copyWith(
-                          color: FactoryColors.textPrimary,
+                      if (job.images.isNotEmpty)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: job.images.take(2).map((imgUrl) {
+                            final fullUrl = imgUrl.startsWith('http')
+                                ? imgUrl
+                                : 'https://mi-factory.aufy.net${imgUrl.startsWith('/') ? '' : '/'}$imgUrl';
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: SizedBox(
+                                  width: 64,
+                                  height: 64,
+                                  child: Image.network(
+                                    fullUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) =>
+                                        const SizedBox.shrink(),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
-                      ),
                     ],
                   ),
+                  const SizedBox(height: 14),
+
+                  // Specs 3-column row spanning width
                   Row(
                     children: [
-                      SizedBox(
-                        width: 64,
-                        height: 64,
-                        child: Image.asset(
-                          'assets/images/ring_front.png',
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFFD0D5DD)),
+                      Expanded(
+                        flex: 4,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Design No',
+                              style: tsS12W400.copyWith(
+                                color: FactoryColors.textSecondary,
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.diamond_outlined,
-                              color: FactoryColors.accentGold,
-                              size: 28,
+                            const SizedBox(height: 4),
+                            Text(
+                              job.designNo,
+                              style: tsS14W700.copyWith(
+                                color: FactoryColors.textPrimary,
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 64,
-                        height: 64,
-                        child: Image.asset(
-                          'assets/images/ring_side.png',
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFFD0D5DD)),
+                      Expanded(
+                        flex: 3,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Pieces',
+                              style: tsS12W400.copyWith(
+                                color: FactoryColors.textSecondary,
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.circle_outlined,
-                              color: FactoryColors.accentGold,
-                              size: 28,
+                            const SizedBox(height: 4),
+                            Text(
+                              '${job.pieces}',
+                              style: tsS14W700.copyWith(
+                                color: FactoryColors.textPrimary,
+                              ),
                             ),
-                          ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Weight',
+                              style: tsS12W400.copyWith(
+                                color: FactoryColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${job.grossWeightGm.toStringAsFixed(0)} gm',
+                              style: tsS14W700.copyWith(
+                                color: FactoryColors.textPrimary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+
+                  // Assigned Employee row (shown on every job card listing)
+                  Builder(
+                    builder: (_) {
+                      final assignedWorker = job.assignedWorkerName;
+                      final hasWorker = assignedWorker != null &&
+                          assignedWorker.trim().isNotEmpty &&
+                          assignedWorker != '-';
+
+                      final String displayText;
+                      final bool isAssigned = hasWorker;
+
+                      if (hasWorker) {
+                        final empCode = (job.assignedWorkerId != null &&
+                                job.assignedWorkerId!.trim().isNotEmpty &&
+                                job.assignedWorkerId != '-')
+                            ? ' (${job.assignedWorkerId})'
+                            : '';
+                        final timeStr = job.displayAssignedTime != '-'
+                            ? ' • ${job.displayAssignedTime}'
+                            : '';
+                        displayText = '$assignedWorker$empCode$timeStr';
+                      } else {
+                        displayText = 'Not Assigned';
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: isAssigned ? FactoryColors.primarySurface : const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Icon(
+                                  Icons.person_outline,
+                                  size: 14,
+                                  color: isAssigned ? FactoryColors.primary : FactoryColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Assigned to: ',
+                                style: tsS12W400.copyWith(
+                                  color: FactoryColors.textSecondary,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  displayText,
+                                  style: tsS13W600.copyWith(
+                                    color: isAssigned ? FactoryColors.textPrimary : FactoryColors.textSecondary,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                  // Status Row matching Figma
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (isReassigned)
+                        Text(
+                          'Re-Assigned',
+                          style: tsS13W700.copyWith(
+                            color: const Color(0xFFE53935),
+                          ),
+                        )
+                      else
+                        Text(
+                          'Status',
+                          style: tsS13W400.copyWith(
+                            color: FactoryColors.textSecondary,
+                          ),
+                        ),
+                      if (isReassigned)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Status',
+                              style: tsS13W400.copyWith(
+                                color: FactoryColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const StatusBadge(
+                              customLabel: 'Pending',
+                              customBgColor: Color(0xFFFFEBEE),
+                              customTextColor: Color(0xFFD32F2F),
+                            ),
+                          ],
+                        )
+                      else
+                        StatusBadge(
+                          status: job.status,
+                          customLabel: job.statusName,
+                        ),
+                    ],
+                  ),
+
+                  // Action Buttons:
+                  // Case 1: Work in Progress (or Started) -> 'View Job Card' button
+                  // Case 2: Re-Assigned -> 'Assign Workers' button
+                  // Case 3: Pending / unassigned -> 'Enter Weight and Acknowledge' button
+                  if (canViewDetails) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  SupervisorJobCardDetailsScreen(jobCard: job),
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(
+                            color: FactoryColors.primary,
+                            width: 1.2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          backgroundColor: Colors.white,
+                        ),
+                        child: Text(
+                          'View Job Card',
+                          style: tsS14W700.copyWith(
+                            color: FactoryColors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ] else if (isReassigned) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => SelectEmployeesScreen(
+                                jobCardId: job.id,
+                              ),
+                            ),
+                          );
+                          if (context.mounted) {
+                              vm.refreshDashboard();
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(
+                            color: FactoryColors.primary,
+                            width: 1.2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          backgroundColor: Colors.white,
+                        ),
+                        child: Text(
+                          'Assign Workers',
+                          style: tsS14W700.copyWith(
+                            color: FactoryColors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ] else if (job.assignedWorkerId != null &&
+                      job.assignedWorkerId!.isNotEmpty &&
+                      job.assignedWorkerId != '-') ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => SelectEmployeesScreen(
+                                jobCardId: job.id,
+                              ),
+                            ),
+                          );
+                          if (context.mounted) {
+                              vm.refreshDashboard();
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(
+                            color: FactoryColors.primary,
+                            width: 1.2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          backgroundColor: Colors.white,
+                        ),
+                        child: Text(
+                          'Reassign Worker',
+                          style: tsS14W700.copyWith(
+                            color: FactoryColors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ] else if ((job.status == JobStatus.pending ||
+                          job.status == JobStatus.toAssign) &&
+                      (job.assignedWorkerId == null ||
+                          job.assignedWorkerId!.trim().isEmpty ||
+                          job.assignedWorkerId == '-') &&
+                      (job.assignedWorkerName == null ||
+                          job.assignedWorkerName!.trim().isEmpty ||
+                          job.assignedWorkerName == '-')) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          if (vm.isWeightEntered(job.id)) {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => SelectEmployeesScreen(
+                                  jobCardId: job.id,
+                                ),
+                              ),
+                            );
+                            if (context.mounted) {
+                                vm.refreshDashboard();
+                            }
+                          } else {
+                            _showSyncWeightDialog(context, vm, job);
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(
+                            color: FactoryColors.primary,
+                            width: 1.2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          backgroundColor: Colors.white,
+                        ),
+                        child: Text(
+                          vm.isWeightEntered(job.id)
+                              ? 'Assign Workers'
+                              : 'Enter Weight and Acknowledge',
+                          style: tsS14W700.copyWith(
+                            color: FactoryColors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 14),
-
-              // Specs 3-column row spanning width
-              Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Design No',
-                          style: tsS12W400.copyWith(
-                            color: FactoryColors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          job.designNo,
-                          style: tsS14W700.copyWith(
-                            color: FactoryColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Pieces',
-                          style: tsS12W400.copyWith(
-                            color: FactoryColors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${job.pieces}',
-                          style: tsS14W700.copyWith(
-                            color: FactoryColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          'Weight',
-                          style: tsS12W400.copyWith(
-                            color: FactoryColors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${job.grossWeightGm.toStringAsFixed(0)} gm',
-                          style: tsS14W700.copyWith(
-                            color: FactoryColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Full-width Action button matching Figma
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () {
-                    _showSyncWeightDialog(context, vm, job);
-                  },
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    side: const BorderSide(
-                      color: FactoryColors.primary,
-                      width: 1.2,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    backgroundColor: Colors.white,
-                  ),
-                  child: Text(
-                    'Assign to Worker',
-                    style: tsS14W700.copyWith(
-                      color: FactoryColors.primary,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -830,6 +1121,7 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -838,15 +1130,33 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
         jobCardId: job.id,
         initialWeight: job.grossWeightGm,
         buttonTitle: 'Proceed to Assign',
-        onSubmit: (weight) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => SelectEmployeesScreen(
-                jobCardId: job.id,
-              ),
-            ),
-          );
+        onSubmit: (weight) async {
+          final dbId = job.dbId ?? int.tryParse(job.id);
+          if (dbId != null) {
+            try {
+              await ApiService.instance.recordWeight(
+                jobCardId: dbId,
+                weight: weight,
+                scaleType: 1,
+              );
+              vm.markWeightEntered(job.id);
+            } catch (e) {
+              final msg = ApiService.extractErrorMessage(e);
+              showToast(msg);
+              debugPrint('Error recording weight before assignment: $e');
+              rethrow;
+            }
+          } else {
+            vm.markWeightEntered(job.id);
+          }
+          final apiMsg = ApiService.instance.lastSuccessMessage;
+          if (apiMsg != null && apiMsg.isNotEmpty) {
+            showToast(apiMsg);
+          }
+          if (context.mounted) {
+            vm.refreshDashboard();
+          }
+          return true;
         },
       ),
     );
@@ -867,7 +1177,8 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
                 onTap: () => vm.setJobFilter(f),
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
                     color: isSelected ? FactoryColors.primary : Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -881,7 +1192,9 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
                   child: Text(
                     f.label,
                     style: (isSelected ? tsS13W700 : tsS13W500).copyWith(
-                      color: isSelected ? Colors.white : FactoryColors.textDarkSlate,
+                      color: isSelected
+                          ? Colors.white
+                          : FactoryColors.textDarkSlate,
                     ),
                   ),
                 ),
@@ -899,6 +1212,38 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
     SupervisorDashboardViewModel vm,
   ) {
     final jobs = vm.filteredJobCards;
+    if (jobs.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: FactoryColors.border),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.assignment_outlined,
+                    size: 40,
+                    color: FactoryColors.textMuted.withValues(alpha: 0.6),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'No job cards found for ${vm.selectedJobFilter.label}',
+                    style: tsS14W600.copyWith(color: FactoryColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverList(
@@ -927,10 +1272,8 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
         delegate: SliverChildBuilderDelegate(
           (context, index) {
             final emp = vm.employees[index];
-            final matchingJob = vm.jobCards.firstWhere(
-              (j) => j.assignedWorkerId == emp.id || j.assignedWorkerName == emp.name,
-              orElse: () => vm.jobCards.first,
-            );
+            final runningJob = vm.getRunningJobForEmployee(emp);
+            final matchingJob = vm.getAnyJobForEmployee(emp);
 
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -991,7 +1334,10 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
                     ),
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Divider(height: 1, thickness: 1, color: FactoryColors.dividerLight),
+                      child: Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: FactoryColors.dividerLight),
                     ),
 
                     // Middle: Job Pending 1 + View Details >
@@ -1008,7 +1354,8 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
                             ),
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 2),
                               decoration: BoxDecoration(
                                 color: FactoryColors.surfaceLightGrey,
                                 borderRadius: BorderRadius.circular(12),
@@ -1056,37 +1403,41 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Bottom Action Button: Stop Job (Outlined magenta)
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Stopped job for ${emp.name}'),
-                              backgroundColor: FactoryColors.buttonRed,
+                    // Bottom Action Button: Stop Job (Only shown if worker has an actively running job)
+                    if (runningJob != null) ...[
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final success = await vm.stopJob(runningJob!.id);
+                            if (context.mounted && success) {
+                              final apiMsg = vm.lastSuccessMessage;
+                              showToast(apiMsg != null && apiMsg.isNotEmpty
+                                  ? apiMsg
+                                  : 'Stopped job for ${emp.name}');
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                            side: const BorderSide(
+                              color: FactoryColors.primary,
+                              width: 1.2,
                             ),
-                          );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 11),
-                          side: const BorderSide(
-                            color: FactoryColors.primary,
-                            width: 1.2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            backgroundColor: Colors.white,
                           ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          backgroundColor: Colors.white,
-                        ),
-                        child: Text(
-                          'Stop Job',
-                          style: tsS13W700.copyWith(
-                            color: FactoryColors.primary,
+                          child: Text(
+                            'Stop Job',
+                            style: tsS13W700.copyWith(
+                              color: FactoryColors.primary,
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -1106,21 +1457,31 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Sticky "Stop All Jobs" button when on Worker Details tab
-        if (vm.bottomNavIndex == 2)
+        // Sticky "Stop All Jobs" button when on Worker Details tab (only if there are active running jobs)
+        if (vm.bottomNavIndex == 2 &&
+            (vm.employees.any((e) => vm.getRunningJobForEmployee(e) != null) ||
+             vm.jobCards.any((j) =>
+                 !j.isDeleted &&
+                 (j.status == JobStatus.inProgress ||
+                     j.status == JobStatus.started ||
+                     j.statusName?.toLowerCase() == 'in progress' ||
+                     j.statusName?.toLowerCase() == 'started'))))
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('All jobs stopped successfully'),
-                      backgroundColor: FactoryColors.buttonRed,
-                    ),
-                  );
+                onPressed: () async {
+                  final count = await vm.stopAllJobs();
+                  if (context.mounted) {
+                    final apiMsg = vm.lastSuccessMessage;
+                    showToast(apiMsg != null && apiMsg.isNotEmpty
+                        ? apiMsg
+                        : (count > 0
+                            ? '$count jobs stopped successfully'
+                            : 'All jobs stopped'));
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1165,7 +1526,10 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
                     currentIndex: vm.bottomNavIndex,
                     svgAsset: 'assets/svgs/ic_nav_job_cards.svg',
                     label: 'Job Cards',
-                    onTap: () => vm.setBottomNavIndex(1),
+                    onTap: () {
+                      vm.setJobFilter(SupervisorTabFilter.toAssign);
+                      vm.setBottomNavIndex(1);
+                    },
                   ),
                   _buildBottomNavItem(
                     index: 2,
@@ -1216,9 +1580,5 @@ class _SupervisorDashboardScreenState extends State<SupervisorDashboardScreen> {
     );
   }
 
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 1)),
-    );
-  }
+
 }

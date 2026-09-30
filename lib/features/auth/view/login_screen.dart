@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 
@@ -8,13 +9,16 @@ import '../../../utils/dimensions.dart';
 import '../../../utils/styles.dart';
 import '../../../widgets/mgd_button.dart';
 import '../../supervisor/view/supervisor_dashboard_screen.dart';
+import '../../worker/view/worker_dashboard_screen.dart';
 import '../view_model/login_view_model.dart';
+import 'choose_location_screen.dart';
 
 /// Shared Login Screen for Factory Worker and Factory Supervisor.
 class LoginScreen extends StatefulWidget {
   static const String routeName = '/login';
+  final LoginViewModel? viewModel;
 
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.viewModel});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -22,8 +26,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _employeeIdController = TextEditingController(text: 'UM001');
-  final _passwordController = TextEditingController(text: '••••••••');
+  final _employeeIdController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _focusNodeEmployee = FocusNode();
   final _focusNodePassword = FocusNode();
 
@@ -39,9 +43,15 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<LoginViewModel>(
-      create: (_) => LoginViewModel(),
-      child: Scaffold(
-        backgroundColor: FactoryColors.surface,
+      create: (_) => widget.viewModel ?? LoginViewModel(),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: FactoryColors.surface,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+        ),
+        child: Scaffold(
+          backgroundColor: FactoryColors.surface,
         body: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: SafeArea(
@@ -64,13 +74,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: FactoryDimens.p16),
                             _buildBrandHeader(),
                             const SizedBox(height: FactoryDimens.p28),
-                            _buildBranchDropdown(vm),
-                            const SizedBox(height: FactoryDimens.p16),
                             _buildEmployeeIdField(),
                             const SizedBox(height: FactoryDimens.p16),
                             _buildPasswordField(vm),
-                            const SizedBox(height: FactoryDimens.p8),
-                            _buildRememberForgotRow(vm),
                             const SizedBox(height: FactoryDimens.p24),
                             _buildLoginButton(vm),
                             const SizedBox(height: FactoryDimens.p32),
@@ -86,8 +92,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   /// Top Brand Logo & App Identity
   Widget _buildBrandHeader() {
@@ -128,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         const SizedBox(height: FactoryDimens.p4),
         Text(
-          'Jewelry Factory ERP',
+          'Jewellery Factory ERP',
           textAlign: TextAlign.center,
           style: FactoryTypography.display.copyWith(
             color: FactoryColors.textPrimary,
@@ -141,69 +148,6 @@ class _LoginScreenState extends State<LoginScreen> {
           textAlign: TextAlign.center,
           style: FactoryTypography.bodyMedium.copyWith(
             color: FactoryColors.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Branch / Unit Selection
-  Widget _buildBranchDropdown(LoginViewModel vm) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Factory Location',
-          style: FactoryTypography.bodySmall.copyWith(
-            color: FactoryColors.textPrimary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: FactoryDimens.p6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: FactoryDimens.p12),
-          decoration: BoxDecoration(
-            color: FactoryColors.background,
-            borderRadius: FactoryDimens.br10,
-            border: Border.all(color: FactoryColors.border),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              dropdownColor: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              value: vm.selectedBranch,
-              isExpanded: true,
-              icon: const Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: FactoryColors.textSecondary,
-              ),
-              items: vm.availableBranches.map((branch) {
-                return DropdownMenuItem<String>(
-                  value: branch,
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.factory_outlined,
-                        size: 18,
-                        color: FactoryColors.primary,
-                      ),
-                      const SizedBox(width: FactoryDimens.p8),
-                      Expanded(
-                        child: Text(
-                          branch,
-                          style: FactoryTypography.bodyMedium.copyWith(
-                            color: FactoryColors.textPrimary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: vm.setSelectedBranch,
-            ),
           ),
         ),
       ],
@@ -253,11 +197,13 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: FactoryDimens.br10,
-              borderSide: const BorderSide(color: FactoryColors.primary, width: 1.5),
+              borderSide:
+                  const BorderSide(color: FactoryColors.primary, width: 1.5),
             ),
           ),
-          validator: (val) =>
-              (val == null || val.trim().isEmpty) ? 'Please enter your Employee ID' : null,
+          validator: (val) => (val == null || val.trim().isEmpty)
+              ? 'Please enter your Employee ID'
+              : null,
         ),
       ],
     );
@@ -317,68 +263,14 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: FactoryDimens.br10,
-              borderSide: const BorderSide(color: FactoryColors.primary, width: 1.5),
+              borderSide:
+                  const BorderSide(color: FactoryColors.primary, width: 1.5),
             ),
           ),
-          validator: (val) =>
-              (val == null || val.trim().isEmpty) ? 'Please enter your password' : null,
+          validator: (val) => (val == null || val.trim().isEmpty)
+              ? 'Please enter your password'
+              : null,
           onFieldSubmitted: (_) => _handleLogin(vm),
-        ),
-      ],
-    );
-  }
-
-  /// Remember Me Checkbox & Forgot Password Link
-  Widget _buildRememberForgotRow(LoginViewModel vm) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: Checkbox(
-                value: vm.rememberMe,
-                onChanged: (val) => vm.setRememberMe(val ?? true),
-                activeColor: FactoryColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: FactoryDimens.br6),
-              ),
-            ),
-            const SizedBox(width: FactoryDimens.p8),
-            GestureDetector(
-              onTap: () => vm.setRememberMe(!vm.rememberMe),
-              child: Text(
-                'Remember me',
-                style: FactoryTypography.bodySmall.copyWith(
-                  color: FactoryColors.textPrimary,
-                ),
-              ),
-            ),
-          ],
-        ),
-        TextButton(
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Please contact Factory Admin to reset credentials.'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          },
-          style: TextButton.styleFrom(
-            padding: EdgeInsets.zero,
-            minimumSize: const Size(50, 30),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: Text(
-            'Forgot Password?',
-            style: FactoryTypography.bodySmall.copyWith(
-              color: FactoryColors.primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
         ),
       ],
     );
@@ -399,7 +291,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusScope.of(context).unfocus();
 
-    final success = await vm.mockLogin(
+    final success = await vm.login(
       employeeId: _employeeIdController.text,
       password: _passwordController.text,
     );
@@ -407,29 +299,26 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: FactoryColors.statusCompletedText,
-          content: Text(
-            'Authenticated as ${vm.selectedRole.label} (${_employeeIdController.text.trim()})',
-          ),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-
-      Navigator.pushReplacementNamed(
-        context,
-        SupervisorDashboardScreen.routeName,
-      );
-    } else {
-      final error = vm.errorMessage ?? 'Authentication failed. Please check credentials.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: FactoryColors.buttonRed,
-          content: Text(error),
-        ),
-      );
+      if (vm.hasFactories) {
+        Navigator.pushReplacementNamed(
+          context,
+          ChooseLocationScreen.routeName,
+        );
+      } else {
+        if (vm.selectedRole == UserRole.worker) {
+          Navigator.pushReplacementNamed(
+            context,
+            WorkerDashboardScreen.routeName,
+          );
+        } else {
+          Navigator.pushReplacementNamed(
+            context,
+            SupervisorDashboardScreen.routeName,
+          );
+        }
+      }
     }
+    // Note: When any error occurs, showToast was already triggered inside LoginViewModel. Nothing else shown!
   }
 
   Widget _buildFooter() {
